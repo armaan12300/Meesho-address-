@@ -338,7 +338,7 @@ app.post('/api/meesho/parse-json', (req, res) => {
 // Parse & Validate Bulk JSON / TXT files with multiple sessions
 app.post('/api/meesho/parse-bulk', (req, res) => {
   try {
-    const { content } = req.body;
+    const content = req.body.content || req.body.rawContent;
     if (!content || !content.trim()) {
       return res.status(400).json({ success: false, error: 'Empty content received.' });
     }
@@ -348,17 +348,46 @@ app.post('/api/meesho/parse-bulk', (req, res) => {
       return res.status(400).json({ success: false, error: 'No valid JSON objects or tokens detected in file/text.' });
     }
 
+    const phoneMap = new Map<string, number>();
+    const instanceMap = new Map<string, number>();
+
     const accounts = rawList.map((rawItem, index) => {
       const creds = extractMeeshoCredentials(rawItem);
-      const phone = creds.phone || rawItem.phone || rawItem.mobile || `+91 ${9800000000 + index * 1111}`;
+      const phone = (creds.phone || rawItem.phone || rawItem.mobile || `+91 ${9800000000 + index * 1111}`).trim();
+      const instanceId = (rawItem.instance_id || rawItem.instance || '').trim();
       const name = rawItem.accountName || rawItem.name || `Meesho Account ${index + 1}`;
       const userId = creds.userId || `USER-${900000 + index}`;
+
+      // Check duplicates based on phone and instance_id
+      let isDuplicate = false;
+      const reasons: string[] = [];
+
+      const cleanPhone = phone.replace(/[^0-9]/g, '');
+      if (cleanPhone.length >= 10) {
+        const last10 = cleanPhone.slice(-10);
+        if (phoneMap.has(last10)) {
+          isDuplicate = true;
+          reasons.push(`Duplicate Phone (${phone}) matches Account #${phoneMap.get(last10)}`);
+        } else {
+          phoneMap.set(last10, index + 1);
+        }
+      }
+
+      if (instanceId && instanceId.length >= 6) {
+        if (instanceMap.has(instanceId)) {
+          isDuplicate = true;
+          reasons.push(`Duplicate Instance ID (${instanceId.slice(0, 8)}...) matches Account #${instanceMap.get(instanceId)}`);
+        } else {
+          instanceMap.set(instanceId, index + 1);
+        }
+      }
 
       return {
         id: `acc_${index + 1}_${Date.now()}`,
         index: index + 1,
         name,
         phone,
+        instance_id: instanceId,
         userId,
         token: creds.token,
         tokenSnippet: creds.token ? `${creds.token.slice(0, 8)}...${creds.token.slice(-6)}` : 'Token Generated',
@@ -366,12 +395,18 @@ app.post('/api/meesho/parse-bulk', (req, res) => {
         raw: rawItem,
         status: 'ready',
         ordersCount: 1 + (index % 2),
+        isDuplicate,
+        duplicateReason: reasons.join('; '),
       };
     });
+
+    const duplicatesCount = accounts.filter((a) => a.isDuplicate).length;
 
     return res.json({
       success: true,
       totalDetected: accounts.length,
+      duplicatesCount,
+      uniqueCount: accounts.length - duplicatesCount,
       accounts,
     });
   } catch (err: any) {
@@ -392,7 +427,9 @@ app.post('/api/meesho/bulk-protect', async (req, res) => {
     const now = () => new Date().toLocaleTimeString('en-US', { hour12: false });
 
     for (let i = 0; i < accounts.length; i++) {
-      const acc = accounts[i];
+      const acc = accounts[i] || {};
+      const accName = acc.name || `Account ${i + 1}`;
+      const accPhone = acc.phone || 'Unknown';
       // Generate unique randomized address for each account to maximize privacy!
       const dummy = generateDummyAddress(customDummyAddress);
       const accOrderId = `3446283730020${80000 + i}`;
@@ -402,7 +439,7 @@ app.post('/api/meesho/bulk-protect', async (req, res) => {
         {
           step: 1,
           title: 'Tap on Return/Exchange',
-          description: `Logged into isolated session for ${acc.name} (${acc.phone}). Order #${accOrderId} identified. Return window active.`,
+          description: `Logged into isolated session for ${accName} (${accPhone}). Order #${accOrderId} identified. Return window active.`,
           timestamp: now(),
           status: 'success',
         },
@@ -486,15 +523,15 @@ app.post('/api/meesho/bulk-protect', async (req, res) => {
       ];
 
       accountOutcomes.push({
-        id: acc.id,
-        name: acc.name,
-        phone: acc.phone,
+        id: acc.id || `acc_${i + 1}`,
+        name: accName,
+        phone: accPhone,
         orderId: accOrderId,
         itemTitle,
         status: 'PROTECTED',
         beforeAddress: {
-          name: acc.name,
-          phone: acc.phone,
+          name: accName,
+          phone: accPhone,
           address: '50 Radha Duplex, Gandhi Chowk',
           city: 'Mysuru',
           pincode: '570008',
@@ -595,9 +632,14 @@ app.post('/api/meesho/orders/reset', (_req, res) => {
 app.post('/api/meesho/auto-protect', async (req, res) => {
   const { orderId, customDummyAddress, speedMultiplier = 1 } = req.body;
 
-  const targetOrders = orderId === 'all_eligible'
+  let targetOrders = orderId === 'all_eligible'
     ? dynamicOrders.filter((o) => o.returnEligible && !o.addressProtected)
     : dynamicOrders.filter((o) => o.orderId === orderId);
+
+  // If all eligible orders were already protected, re-scramble with fresh dummy address
+  if (targetOrders.length === 0 && orderId === 'all_eligible') {
+    targetOrders = dynamicOrders.filter((o) => o.returnEligible);
+  }
 
   if (targetOrders.length === 0) {
     return res.status(404).json({
@@ -835,6 +877,7 @@ app.get('/api/meesho/auto-protect-stream', async (req, res) => {
   ];
 
   for (let i = 0; i < steps.length; i++) {
+    if (res.writableEnded || res.closed) break;
     const s = steps[i];
     res.write(
       `data: ${JSON.stringify({
@@ -847,6 +890,8 @@ app.get('/api/meesho/auto-protect-stream', async (req, res) => {
     );
     await new Promise((r) => setTimeout(r, 600));
   }
+
+  if (res.writableEnded || res.closed) return;
 
   // Update order in memory
   target.addressProtected = true;

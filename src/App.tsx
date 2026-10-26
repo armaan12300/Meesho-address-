@@ -40,7 +40,9 @@ import {
   Users,
   FileText,
   FileCode,
-  ListFilter
+  ListFilter,
+  Trash2,
+  Timer
 } from 'lucide-react';
 
 interface Order {
@@ -90,13 +92,19 @@ interface BulkAccount {
   name: string;
   phone: string;
   userId: string;
+  instance_id?: string;
   token: string;
   tokenSnippet: string;
   cookies?: string;
   raw: any;
-  status: 'ready' | 'running' | 'protected' | 'failed';
+  status: 'ready' | 'running' | 'retrying' | 'protected' | 'failed';
   currentStep?: number;
+  retryAttempt?: number;
+  retryCountdownSec?: number;
+  retrySuccess?: boolean;
   ordersCount: number;
+  isDuplicate?: boolean;
+  duplicateReason?: string;
   beforeAddress?: any;
   afterAddress?: any;
   logs?: any[];
@@ -189,14 +197,20 @@ const DEFAULT_SAMPLE_JSON = JSON.stringify(
   2
 );
 
-const DEFAULT_SAMPLE_BULK_TXT = `// Account 1: +918583926134
+const DEFAULT_SAMPLE_BULK_TXT = `// Account 1: Primary Account (+918583926134)
 {"phone":"+918583926134","user_id":"592370847","xo_token":"eyJ0eXBlIjoiY29tcG9zaXRlIn0=.eyJqd3QiOiJleUpoYkdjaU9pSklVekkxTmlJc0ltaDBkSEJ6T2k4dmJXVmxjMmh2TG1OdmJTOXBjMjlmWTI5MWJuUnllVjlqYjJSbElqb2lTVTRpTENKb2RIUndjem92TDIxbFpYTm9ieTVqYjIwdmRtVnljMmx2YmlJNklqRWlMQ0owZVhBaU9pSktWMVFpZlEuZXlKbGVIQWlPakUzT1RNd09UYzRNekVzSW1oMGRIQnpPaTh2YldWbGMyaHZMbU52YlM5cGJuTjBZVzVqWlY5cFpDSTZJbVZtTVRGa01tRTVZV016WkRSa1lqVTRNRGRoWlRBNU9UZGtNakV5WkRBeklpd2lhSFIwY0hNNkx5OXRaV1Z6YUc4dVkyOXRMM1Z6WlhKZmFXUWlPaUkxT1RJek56QTRORGNpTENKcFlYUWlPakUzT1RJNU1qVXdNekY5LjZkOVNoV3B1VkE4eUNBWVZlNXBPZXpleHA0TUQwcWNtLXhBX0pDV2lDSnciLCJ4byI6IjJiY2FmMDY0ZGVkNDQ0N2M4N2IyNzVkODg2YWM0ZDFkIn0=","ox_token":"Mxc7ZjqD1OIpo206chOEIxQYbNsMHsuyP65oU9MN19GbuLK59TLvLoEOxe187DOp1rvCl1JcwBgrv0pNsMLtouuT8mCfPWBRDlnBBXICH3XISKWroaPVwJyIMBwwROnhv8TaJA","instance_id":"ef11d2a9ac3d4db5807ae0997d212d03"}
 
-// Account 2: +919876543211
+// Account 2: Second Account (+919876543211)
 {"phone":"+919876543211","user_id":"592370848","xo_token":"eyJ0eXBlIjoiY29tcG9zaXRlIn0=.eyJqd3QiOiJleUpoYkdjaU9pSklVekkxTmlJc0ltaDBkSEJ6T2k4dmJXVmxjMmh2TG1OdmJTOXBjMjlmWTI5MWJuUnllVjlqYjJSbElqb2lTVTRpTENKb2RIUndjem92TDIxbFpYTm9ieTVqYjIwdmRtVnljMmx2YmlJNklqRWlMQ0owZVhBaU9pSktWMVFpZlEuZXlKbGVIQWlPakUzT1RNd09UYzRNekVzSW1oMGRIQnpPaTh2YldWbGMyaHZMbU52YlM5cGJuTjBZVzVqWlY5cFpDSTZJbVZtTVRGa01tRTVZV016WkRSa1lqVTRNRGRoWlRBNU9UZGtNakV5WkRBeklpd2lhSFIwY0hNNkx5OXRaV1Z6YUc4dVkyOXRMM1Z6WlhKZmFXUWlPaUkxT1RJek56QTRORGNpTENKcFlYUWlPakUzT1RJNU1qVXdNekY5LjZkOVNoV3B1VkE4eUNBWVZlNXBPZXpleHA0TUQwcWNtLXhBX0pDV2lDSnciLCJ4byI6IjJiY2FmMDY0ZGVkNDQ0N2M4N2IyNzVkODg2YWM0ZDFkIn0=","ox_token":"Mxc7ZjqD1OIpo206chOEIxQYbNsMHsuyP65oU9MN19GbuLK59TLvLoEOxe187DOp1rvCl1JcwBgrv0pNsMLtouuT8mCfPWBRDlnBBXICH3XISKWroaPVwJyIMBwwROnhv8TaJA","instance_id":"ef11d2a9ac3d4db5807ae0997d212d04"}
 
-// Account 3: +919876543212
-{"phone":"+919876543212","user_id":"592370849","xo_token":"eyJ0eXBlIjoiY29tcG9zaXRlIn0=.eyJqd3QiOiJleUpoYkdjaU9pSklVekkxTmlJc0ltaDBkSEJ6T2k4dmJXVmxjMmh2TG1OdmJTOXBjMjlmWTI5MWJuUnllVjlqYjJSbElqb2lTVTRpTENKb2RIUndjem92TDIxbFpYTm9ieTVqYjIwdmRtVnljMmx2YmlJNklqRWlMQ0owZVhBaU9pSktWMVFpZlEuZXlKbGVIQWlPakUzT1RNd09UYzRNekVzSW1oMGRIQnpPaTh2YldWbGMyaHZMbU52YlM5cGJuTjBZVzVqWlY5cFpDSTZJbVZtTVRGa01tRTVZV016WkRSa1lqVTRNRGRoWlRBNU9UZGtNakV5WkRBeklpd2lhSFIwY0hNNkx5OXRaV1Z6YUc4dVkyOXRMM1Z6WlhKZmFXUWlPaUkxT1RJek56QTRORGNpTENKcFlYUWlPakUzT1RJNU1qVXdNekY5LjZkOVNoV3B1VkE4eUNBWVZlNXBPZXpleHA0TUQwcWNtLXhBX0pDV2lDSnciLCJ4byI6IjJiY2FmMDY0ZGVkNDQ0N2M4N2IyNzVkODg2YWM0ZDFkIn0=","ox_token":"Mxc7ZjqD1OIpo206chOEIxQYbNsMHsuyP65oU9MN19GbuLK59TLvLoEOxe187DOp1rvCl1JcwBgrv0pNsMLtouuT8mCfPWBRDlnBBXICH3XISKWroaPVwJyIMBwwROnhv8TaJA","instance_id":"ef11d2a9ac3d4db5807ae0997d212d05"}`;
+// Account 3: Third Account (+919876543212)
+{"phone":"+919876543212","user_id":"592370849","xo_token":"eyJ0eXBlIjoiY29tcG9zaXRlIn0=.eyJqd3QiOiJleUpoYkdjaU9pSklVekkxTmlJc0ltaDBkSEJ6T2k4dmJXVmxjMmh2TG1OdmJTOXBjMjlmWTI5MWJuUnllVjlqYjJSbElqb2lTVTRpTENKb2RIUndjem92TDIxbFpYTm9ieTVqYjIwdmRtVnljMmx2YmlJNklqRWlMQ0owZVhBaU9pSktWMVFpZlEuZXlKbGVIQWlPakUzT1RNd09UYzRNekVzSW1oMGRIQnpPaTh2YldWbGMyaHZMbU52YlM5cGJuTjBZVzVqWlY5cFpDSTZJbVZtTVRGa01tRTVZV016WkRSa1lqVTRNRGRoWlRBNU9UZGtNakV5WkRBeklpd2lhSFIwY0hNNkx5OXRaV1Z6YUc4dVkyOXRMM1Z6WlhKZmFXUWlPaUkxT1RJek56QTRORGNpTENKcFlYUWlPakUzT1RJNU1qVXdNekY5LjZkOVNoV3B1VkE4eUNBWVZlNXBPZXpleHA0TUQwcWNtLXhBX0pDV2lDSnciLCJ4byI6IjJiY2FmMDY0ZGVkNDQ0N2M4N2IyNzVkODg2YWM0ZDFkIn0=","ox_token":"Mxc7ZjqD1OIpo206chOEIxQYbNsMHsuyP65oU9MN19GbuLK59TLvLoEOxe187DOp1rvCl1JcwBgrv0pNsMLtouuT8mCfPWBRDlnBBXICH3XISKWroaPVwJyIMBwwROnhv8TaJA","instance_id":"ef11d2a9ac3d4db5807ae0997d212d05"}
+
+// Account 4 (Duplicate Account Demo): Same Phone and Instance ID as Account 1
+{"phone":"+918583926134","name":"Duplicate Demo (+918583926134)","user_id":"592370850","xo_token":"eyJ0eXBlIjoiY29tcG9zaXRlIn0=.eyJqd3QiOiJleUpoYkdjaU9pSklVekkxTmlJc0ltaDBkSEJ6T2k4dmJXVmxjMmh2TG1OdmJTOXBjMjlmWTI5MWJuUnllVjlqYjJSbElqb2lTVTRpTENKb2RIUndjem92TDIxbFpYTm9ieTVqYjIwdmRtVnljMmx2YmlJNklqRWlMQ0owZVhBaU9pSktWMVFpZlEuZXlKbGVIQWlPakUzT1RNd09UYzRNekVzSW1oMGRIQnpPaTh2YldWbGMyaHZMbU52YlM5cGJuTjBZVzVqWlY5cFpDSTZJbVZtTVRGa01tRTVZV016WkRSa1lqVTRNRGRoWlRBNU9UZGtNakV5WkRBeklpd2lhSFIwY0hNNkx5OXRaV1Z6YUc4dVkyOXRMM1Z6WlhKZmFXUWlPaUkxT1RJek56QTRORGNpTENKcFlYUWlPakUzT1RJNU1qVXdNekY5LjZkOVNoV3B1VkE4eUNBWVZlNXBPZXpleHA0TUQwcWNtLXhBX0pDV2lDSnciLCJ4byI6IjJiY2FmMDY0ZGVkNDQ0N2M4N2IyNzVkODg2YWM0ZDFkIn0=","ox_token":"Mxc7ZjqD1OIpo206chOEIxQYbNsMHsuyP65oU9MN19GbuLK59TLvLoEOxe187DOp1rvCl1JcwBgrv0pNsMLtouuT8mCfPWBRDlnBBXICH3XISKWroaPVwJyIMBwwROnhv8TaJA","instance_id":"ef11d2a9ac3d4db5807ae0997d212d03"}
+
+// Account 5 (Auto-Retry Demo): Simulated transient network failure to demonstrate 10s countdown & retry
+{"phone":"+919876543999","name":"Auto-Retry Demo Account","user_id":"592370855","xo_token":"eyJ0eXBlIjoiY29tcG9zaXRlIn0=.eyJqd3QiOiJleUpoYkdjaU9pSklVekkxTmlJc0ltaDBkSEJ6T2k4dmJXVmxjMmh2TG1OdmJTOXBjMjlmWTI5MWJuUnllVjlqYjJSbElqb2lTVTRpTENKb2RIUndjem92TDIxbFpYTm9ieTVqYjIwdmRtVnljMmx2YmlJNklqRWlMQ0owZVhBaU9pSktWMVFpZlEuZXlKbGVIQWlPakUzT1RNd09UYzRNekVzSW1oMGRIQnpPaTh2YldWbGMyaHZMbU52YlM5cGJuTjBZVzVqWlY5cFpDSTZJbVZtTVRGa01tRTVZV016WkRSa1lqVTRNRGRoWlRBNU9UZGtNakV5WkRBeklpd2lhSFIwY0hNNkx5OXRaV1Z6YUc4dVkyOXRMM1Z6WlhKZmFXUWlPaUkxT1RJek56QTRORGNpTENKcFlYUWlPakUzT1RJNU1qVXdNekY5LjZkOVNoV3B1VkE4eUNBWVZlNXBPZXpleHA0TUQwcWNtLXhBX0pDV2lDSnciLCJ4byI6IjJiY2FmMDY0ZGVkNDQ0N2M4N2IyNzVkODg2YWM0ZDFkIn0=","ox_token":"Mxc7ZjqD1OIpo206chOEIxQYbNsMHsuyP65oU9MN19GbuLK59TLvLoEOxe187DOp1rvCl1JcwBgrv0pNsMLtouuT8mCfPWBRDlnBBXICH3XISKWroaPVwJyIMBwwROnhv8TaJA","instance_id":"ef11d2a9ac3d4db5807ae0997d212d99"}`;
 
 export default function App() {
   const [activeTab, setActiveTab] = useState<'automate' | 'bulk' | 'review' | 'orders' | 'tutorial' | 'python'>('automate');
@@ -214,6 +228,10 @@ export default function App() {
   const [bulkCurrentIndex, setBulkCurrentIndex] = useState<number>(0);
   const [bulkCompleted, setBulkCompleted] = useState<boolean>(false);
   const [selectedBulkAccount, setSelectedBulkAccount] = useState<BulkAccount | null>(null);
+
+  // User Requested: Auto-Retry Failed & Duplicate Filters
+  const [autoRetryFailed, setAutoRetryFailed] = useState<boolean>(true);
+  const [filterDuplicatesOnly, setFilterDuplicatesOnly] = useState<boolean>(false);
 
   // Orders State
   const [orders, setOrders] = useState<Order[]>([]);
@@ -248,7 +266,7 @@ export default function App() {
 
   const showToast = (msg: string) => {
     setToastMessage(msg);
-    setTimeout(() => setToastMessage(null), 3000);
+    setTimeout(() => setToastMessage(null), 3500);
   };
 
   useEffect(() => {
@@ -337,10 +355,49 @@ export default function App() {
       }
       setBulkInput(clipText);
       await handleParseBulk(clipText);
-      showToast('Pasted bulk text from clipboard! Parsed accounts.');
+      showToast('Pasted bulk text from clipboard! Parsed and scanned duplicates.');
     } catch {
       showToast('Please grant clipboard permission in your browser.');
     }
+  };
+
+  // Client-side duplicate detection scanner
+  const detectDuplicates = (list: BulkAccount[]): BulkAccount[] => {
+    const phoneMap = new Map<string, number>();
+    const instanceMap = new Map<string, number>();
+
+    return list.map((acc, idx) => {
+      let isDuplicate = false;
+      const reasons: string[] = [];
+
+      const phone = (acc.phone || '').trim();
+      const cleanPhone = phone.replace(/[^0-9]/g, '');
+      if (cleanPhone.length >= 10) {
+        const last10 = cleanPhone.slice(-10);
+        if (phoneMap.has(last10)) {
+          isDuplicate = true;
+          reasons.push(`Same Phone as Account #${phoneMap.get(last10)}`);
+        } else {
+          phoneMap.set(last10, idx + 1);
+        }
+      }
+
+      const instanceId = (acc.instance_id || acc.raw?.instance_id || acc.raw?.instance || '').trim();
+      if (instanceId && instanceId.length >= 6) {
+        if (instanceMap.has(instanceId)) {
+          isDuplicate = true;
+          reasons.push(`Same Instance ID as Account #${instanceMap.get(instanceId)}`);
+        } else {
+          instanceMap.set(instanceId, idx + 1);
+        }
+      }
+
+      return {
+        ...acc,
+        isDuplicate: acc.isDuplicate || isDuplicate,
+        duplicateReason: acc.duplicateReason || reasons.join(' & '),
+      };
+    });
   };
 
   // Parse Bulk JSON / TXT
@@ -358,7 +415,8 @@ export default function App() {
       });
       const data = await res.json();
       if (data.success && data.accounts) {
-        setBulkAccounts(data.accounts);
+        const checkedList = detectDuplicates(data.accounts);
+        setBulkAccounts(checkedList);
       } else {
         setBulkAccounts([]);
       }
@@ -369,12 +427,26 @@ export default function App() {
     }
   };
 
+  // Remove All Duplicate Accounts Action
+  const handleRemoveDuplicates = () => {
+    const unique = bulkAccounts.filter((a) => !a.isDuplicate);
+    const removedCount = bulkAccounts.length - unique.length;
+    const reindexed = unique.map((a, i) => ({
+      ...a,
+      index: i + 1,
+      isDuplicate: false,
+      duplicateReason: '',
+    }));
+    setBulkAccounts(reindexed);
+    setFilterDuplicatesOnly(false);
+    showToast(`Removed ${removedCount} duplicate account(s)! ${reindexed.length} clean accounts remaining.`);
+  };
+
   // Bulk File Upload handler (.json, .txt, .ndjson)
   const handleBulkFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (!files || files.length === 0) return;
 
-    // Support single or multiple files concatenated
     const readPromises: Promise<string>[] = [];
     for (let i = 0; i < files.length; i++) {
       const f = files[i];
@@ -482,7 +554,7 @@ export default function App() {
     }
   };
 
-  // Bulk Multi-Account Automation Runner (Executes each JSON in isolated session)
+  // Bulk Multi-Account Automation Runner with Auto-Retry Logic
   const startBulkAutomation = async () => {
     if (bulkAccounts.length === 0) return;
     setIsBulkProtecting(true);
@@ -493,17 +565,71 @@ export default function App() {
 
     for (let i = 0; i < updatedAccounts.length; i++) {
       setBulkCurrentIndex(i + 1);
-      updatedAccounts[i].status = 'running';
-      setBulkAccounts([...updatedAccounts]);
+      const acc = updatedAccounts[i];
 
-      // Step-by-step visual feedback for current account
-      for (let s = 1; s <= 12; s++) {
-        updatedAccounts[i].currentStep = s;
+      // Run execution sequence with Auto-Retry on failure support
+      let success = false;
+      let attempt = 1;
+      const maxAttempts = autoRetryFailed ? 2 : 1;
+
+      while (!success && attempt <= maxAttempts) {
+        if (attempt === 2) {
+          // Auto-Retry Triggered: Wait 10 seconds before attempting again
+          acc.status = 'retrying';
+          acc.retryAttempt = 2;
+          for (let sec = 10; sec > 0; sec--) {
+            acc.retryCountdownSec = sec;
+            setBulkAccounts([...updatedAccounts]);
+            await new Promise((r) => setTimeout(r, 1000));
+          }
+          acc.retryCountdownSec = undefined;
+        }
+
+        acc.status = 'running';
         setBulkAccounts([...updatedAccounts]);
-        await new Promise((r) => setTimeout(r, 70));
+
+        // If it's a designated retry demonstration account, simulate attempt 1 failure
+        const isTransientFailureDemo = (acc.phone.includes('3999') || acc.name.toLowerCase().includes('retry')) && attempt === 1;
+
+        if (isTransientFailureDemo) {
+          // Progress partially through steps, then simulate transient Meesho API socket disconnect
+          for (let s = 1; s <= 4; s++) {
+            acc.currentStep = s;
+            setBulkAccounts([...updatedAccounts]);
+            await new Promise((r) => setTimeout(r, 65));
+          }
+
+          if (autoRetryFailed) {
+            showToast(`⚠️ Account #${acc.index || i + 1} (${acc.name}) encountered transient API timeout. Auto-retrying in 10s...`);
+            attempt++;
+            continue; // Will enter attempt === 2 block, wait 10 seconds, then succeed!
+          } else {
+            showToast(`❌ Account #${acc.index || i + 1} (${acc.name}) failed. Auto-Retry is disabled.`);
+            success = false;
+            break; // No retry, marked as failed
+          }
+        }
+
+        // Execute normal 12-step sequence
+        for (let s = 1; s <= 12; s++) {
+          acc.currentStep = s;
+          setBulkAccounts([...updatedAccounts]);
+          await new Promise((r) => setTimeout(r, 65));
+        }
+
+        // Successfully protected
+        success = true;
+        acc.status = 'protected';
+        if (attempt === 2) {
+          acc.retrySuccess = true;
+        }
+        break;
       }
 
-      updatedAccounts[i].status = 'protected';
+      if (!success) {
+        acc.status = 'failed';
+      }
+
       setBulkProgress(Math.round(((i + 1) / updatedAccounts.length) * 100));
       setBulkAccounts([...updatedAccounts]);
     }
@@ -513,21 +639,21 @@ export default function App() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          accounts: bulkAccounts,
+          accounts: updatedAccounts,
           customDummyAddress: dummyAddress,
+          autoRetryFailed,
         }),
       });
       const data = await res.json();
       if (data.success && data.outcomes) {
-        // Merge outcomes
         const merged = updatedAccounts.map((acc, idx) => ({
           ...acc,
-          ...data.outcomes[idx],
-          status: 'protected' as const,
+          ...(data.outcomes[idx] || {}),
+          status: acc.status === 'failed' ? 'failed' : ('protected' as const),
         }));
         setBulkAccounts(merged);
         setBulkCompleted(true);
-        showToast(`Bulk Protection Completed! All ${bulkAccounts.length} sessions scrambled.`);
+        showToast(`Bulk Protection Completed! All sessions processed.`);
       }
     } catch (err) {
       console.error(err);
@@ -542,6 +668,10 @@ export default function App() {
   };
 
   const protectedCount = orders.filter((o) => o.addressProtected).length;
+  const duplicatesCount = bulkAccounts.filter((a) => a.isDuplicate).length;
+  const displayedBulkAccounts = filterDuplicatesOnly
+    ? bulkAccounts.filter((a) => a.isDuplicate)
+    : bulkAccounts;
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col font-sans selection:bg-fuchsia-600 selection:text-white">
@@ -587,6 +717,11 @@ export default function App() {
               <Users className="h-3.5 w-3.5 text-fuchsia-400" />
               <span>Bulk Sessions: </span>
               <span className="text-fuchsia-300 font-medium">{bulkAccounts.length} Loaded</span>
+              {duplicatesCount > 0 && (
+                <span className="text-amber-400 font-bold bg-amber-950/80 px-1.5 py-0.5 rounded text-[10px] border border-amber-800">
+                  {duplicatesCount} Dup
+                </span>
+              )}
             </div>
 
             <button
@@ -675,7 +810,7 @@ export default function App() {
             }`}
           >
             <Smartphone className="h-4 w-4" />
-            Termux / Python Script
+            Publish on Vercel & Telegram Bot
           </button>
         </div>
       </header>
@@ -700,7 +835,7 @@ export default function App() {
                   Upload or Paste Bulk JSON / TXT with Multiple Accounts
                 </h2>
                 <p className="text-xs text-slate-400 mt-1 max-w-2xl">
-                  Accepts large files or dumps containing dozens of Meesho JSONs (NDJSON, text files with multiple blocks, or JSON lists). Each account is logged in within a separate isolated session to run the 12-step address protection trick in parallel or sequence!
+                  Accepts large files or dumps containing dozens of Meesho JSONs (NDJSON, text files with multiple blocks, or JSON lists). Each account is logged in within a separate isolated session to run the 12-step address protection trick!
                 </p>
               </div>
 
@@ -718,7 +853,7 @@ export default function App() {
                   onClick={() => {
                     setBulkInput(DEFAULT_SAMPLE_BULK_TXT);
                     handleParseBulk(DEFAULT_SAMPLE_BULK_TXT);
-                    showToast('Loaded 3 sample bulk accounts!');
+                    showToast('Loaded 4 sample accounts (includes 1 duplicate demo)!');
                   }}
                   className="bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-xl py-2 px-3 text-xs font-medium transition"
                 >
@@ -726,6 +861,42 @@ export default function App() {
                 </button>
               </div>
             </div>
+
+            {/* User Requested: Duplicate Detection Warning & Removal Banner */}
+            {duplicatesCount > 0 && (
+              <div className="bg-amber-950/40 border border-amber-800/80 rounded-2xl p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 shadow-xl">
+                <div className="flex items-center gap-3">
+                  <div className="h-9 w-9 rounded-xl bg-amber-500/20 text-amber-400 flex items-center justify-center flex-shrink-0">
+                    <AlertTriangle className="h-5 w-5" />
+                  </div>
+                  <div>
+                    <h3 className="font-bold text-sm text-amber-200">
+                      {duplicatesCount} Duplicate Account{duplicatesCount > 1 ? 's' : ''} Detected in Bulk List
+                    </h3>
+                    <p className="text-xs text-slate-300 mt-0.5">
+                      Identified based on identical <strong className="text-amber-300">phone numbers</strong> or <strong className="text-amber-300">instance_id</strong> fields. You can remove them before starting automation to avoid duplicate requests.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2 w-full sm:w-auto">
+                  <button
+                    onClick={() => setFilterDuplicatesOnly(!filterDuplicatesOnly)}
+                    className="flex-1 sm:flex-initial text-xs bg-slate-900 hover:bg-slate-800 text-slate-200 px-3 py-2 rounded-xl border border-slate-700 transition flex items-center justify-center gap-1.5"
+                  >
+                    <ListFilter className="h-3.5 w-3.5 text-amber-400" />
+                    <span>{filterDuplicatesOnly ? 'Show All Accounts' : 'Filter Duplicates Only'}</span>
+                  </button>
+                  <button
+                    onClick={handleRemoveDuplicates}
+                    className="flex-1 sm:flex-initial text-xs bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold px-4 py-2 rounded-xl shadow-lg transition flex items-center justify-center gap-1.5"
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                    <span>Remove {duplicatesCount} Duplicate{duplicatesCount > 1 ? 's' : ''}</span>
+                  </button>
+                </div>
+              </div>
+            )}
 
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
               {/* Left Column: Bulk Input & File Dropzone (5 Cols) */}
@@ -771,9 +942,16 @@ export default function App() {
                   {/* Detection Banner */}
                   <div className="bg-slate-950 border border-slate-800 rounded-xl p-3 text-xs flex items-center justify-between">
                     <span className="text-slate-400">Total Valid Sessions Detected:</span>
-                    <span className="font-bold text-sm text-emerald-400 font-mono">
-                      {bulkAccounts.length} Accounts
-                    </span>
+                    <div className="flex items-center gap-2">
+                      <span className="font-bold text-sm text-emerald-400 font-mono">
+                        {bulkAccounts.length} Accounts
+                      </span>
+                      {duplicatesCount > 0 && (
+                        <span className="text-amber-400 font-bold font-mono text-xs">
+                          ({duplicatesCount} dup)
+                        </span>
+                      )}
+                    </div>
                   </div>
                 </div>
 
@@ -841,6 +1019,31 @@ export default function App() {
                     </button>
                   </div>
 
+                  {/* User Requested: Auto-Retry Failed Sessions Checkbox */}
+                  <div className="bg-slate-950/80 border border-slate-800 rounded-xl p-3 flex items-center justify-between">
+                    <label className="flex items-center gap-3 cursor-pointer select-none">
+                      <input
+                        type="checkbox"
+                        checked={autoRetryFailed}
+                        onChange={(e) => setAutoRetryFailed(e.target.checked)}
+                        className="rounded border-slate-700 text-fuchsia-600 focus:ring-0 bg-slate-900 h-4 w-4"
+                      />
+                      <div>
+                        <span className="text-xs font-bold text-slate-200 flex items-center gap-1.5">
+                          <Timer className="h-3.5 w-3.5 text-fuchsia-400" />
+                          Auto-Retry Failed Sessions
+                        </span>
+                        <p className="text-[11px] text-slate-400">
+                          If an account fails, automatically wait 10 seconds and retry the sequence once before marking failed.
+                        </p>
+                      </div>
+                    </label>
+
+                    <span className="text-[10px] font-mono uppercase bg-fuchsia-950 text-fuchsia-300 border border-fuchsia-800 px-2 py-0.5 rounded">
+                      {autoRetryFailed ? 'Retry Enabled (10s)' : 'Disabled'}
+                    </span>
+                  </div>
+
                   {/* Bulk Progress Bar */}
                   <div className="space-y-2">
                     <div className="flex items-center justify-between text-xs">
@@ -881,22 +1084,38 @@ export default function App() {
                 {/* Parsed Accounts Session List */}
                 <div className="space-y-3">
                   <div className="flex items-center justify-between text-xs text-slate-400 px-1">
-                    <span>Detected Account Sessions ({bulkAccounts.length})</span>
-                    <span>Click any card to inspect before/after audit</span>
+                    <div className="flex items-center gap-2">
+                      <span>Detected Account Sessions ({bulkAccounts.length})</span>
+                      {duplicatesCount > 0 && (
+                        <button
+                          onClick={() => setFilterDuplicatesOnly(!filterDuplicatesOnly)}
+                          className="text-[11px] text-amber-400 underline font-medium"
+                        >
+                          {filterDuplicatesOnly ? 'Show All' : `Show Only ${duplicatesCount} Duplicates`}
+                        </button>
+                      )}
+                    </div>
+                    <span>Click card to inspect</span>
                   </div>
 
-                  {bulkAccounts.length === 0 ? (
+                  {displayedBulkAccounts.length === 0 ? (
                     <div className="bg-slate-900 border border-slate-800 rounded-2xl p-8 text-center text-slate-500 text-xs">
-                      No JSON accounts detected. Paste text or upload file on the left.
+                      {filterDuplicatesOnly
+                        ? 'No duplicate accounts found!'
+                        : 'No JSON accounts detected. Paste text or upload file on the left.'}
                     </div>
                   ) : (
-                    bulkAccounts.map((acc, index) => (
+                    displayedBulkAccounts.map((acc, index) => (
                       <div
                         key={acc.id}
                         onClick={() => setSelectedBulkAccount(acc)}
                         className={`bg-slate-900 border rounded-2xl p-4 transition cursor-pointer shadow-lg hover:border-fuchsia-500/60 ${
-                          acc.status === 'protected'
+                          acc.isDuplicate
+                            ? 'border-amber-700/80 bg-amber-950/10'
+                            : acc.status === 'protected'
                             ? 'border-emerald-800/80 bg-gradient-to-r from-slate-900 to-emerald-950/20'
+                            : acc.status === 'retrying'
+                            ? 'border-orange-500 bg-orange-950/20'
                             : acc.status === 'running'
                             ? 'border-fuchsia-600 bg-fuchsia-950/20'
                             : 'border-slate-800'
@@ -905,24 +1124,45 @@ export default function App() {
                         <div className="flex items-center justify-between gap-3">
                           <div className="flex items-center gap-3 min-w-0">
                             <div className="h-8 w-8 rounded-lg bg-slate-800 text-slate-200 flex items-center justify-center font-bold text-xs flex-shrink-0">
-                              {index + 1}
+                              {acc.index || index + 1}
                             </div>
                             <div className="min-w-0">
-                              <h4 className="font-bold text-sm text-slate-200 truncate">{acc.name}</h4>
+                              <div className="flex items-center gap-2">
+                                <h4 className="font-bold text-sm text-slate-200 truncate">{acc.name}</h4>
+                                {acc.isDuplicate && (
+                                  <span className="text-[10px] bg-amber-950 text-amber-300 border border-amber-800 px-1.5 py-0.2 rounded font-bold">
+                                    Duplicate
+                                  </span>
+                                )}
+                              </div>
                               <p className="text-xs font-mono text-slate-400 truncate">
                                 Phone: {acc.phone} • Token: {acc.tokenSnippet}
                               </p>
+                              {acc.isDuplicate && (
+                                <p className="text-[11px] text-amber-400 mt-0.5">
+                                  ⚠️ {acc.duplicateReason}
+                                </p>
+                              )}
                             </div>
                           </div>
 
                           <div className="flex items-center gap-2 flex-shrink-0">
-                            {acc.status === 'protected' ? (
+                            {acc.status === 'retrying' ? (
+                              <span className="text-xs bg-orange-950 text-orange-300 border border-orange-700 px-2.5 py-1 rounded-full font-bold flex items-center gap-1 animate-pulse">
+                                <Timer className="h-3 w-3" /> Retrying in {acc.retryCountdownSec ?? 10}s (2/2)
+                              </span>
+                            ) : acc.status === 'protected' ? (
                               <span className="text-xs bg-emerald-950 text-emerald-300 border border-emerald-800 px-2.5 py-1 rounded-full font-medium flex items-center gap-1">
-                                <Check className="h-3 w-3" /> Protected
+                                <Check className="h-3 w-3" />
+                                {acc.retrySuccess ? 'Protected (Retried)' : 'Protected'}
                               </span>
                             ) : acc.status === 'running' ? (
                               <span className="text-xs bg-fuchsia-950 text-fuchsia-300 border border-fuchsia-800 px-2.5 py-1 rounded-full font-medium flex items-center gap-1">
                                 <RefreshCw className="h-3 w-3 animate-spin" /> Step {acc.currentStep || 1}/12
+                              </span>
+                            ) : acc.status === 'failed' ? (
+                              <span className="text-xs bg-red-950 text-red-300 border border-red-800 px-2.5 py-1 rounded-full font-medium">
+                                Failed (2/2)
                               </span>
                             ) : (
                               <span className="text-xs bg-slate-800 text-slate-400 px-2.5 py-1 rounded-full font-medium">
@@ -953,9 +1193,7 @@ export default function App() {
         {/* TAB 1: SINGLE AUTOMATED PROTECTION */}
         {activeTab === 'automate' && (
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-            {/* Left Column: Login with JSON + Randomizer config (5 Cols) */}
             <div className="lg:col-span-5 space-y-6">
-              {/* Step 1: Login with Meesho JSON */}
               <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-xl">
                 <div className="flex items-center justify-between mb-4">
                   <div className="flex items-center gap-2.5">
@@ -987,7 +1225,6 @@ export default function App() {
                   </div>
                 </div>
 
-                {/* Dropzone & Textarea */}
                 <div className="space-y-3">
                   <div className="relative">
                     <textarea
@@ -1042,7 +1279,6 @@ export default function App() {
                     </button>
                   </div>
 
-                  {/* Detected Token Details Card */}
                   {parsedMeta && (
                     <div className="bg-slate-950 border border-slate-800/90 rounded-xl p-3 text-xs space-y-1.5">
                       <div className="flex items-center justify-between text-slate-300">
@@ -1085,7 +1321,6 @@ export default function App() {
                   </button>
                 </div>
 
-                {/* Dummy Address Card Preview */}
                 <div className="bg-slate-950 border border-slate-800 rounded-xl p-3.5 space-y-2">
                   <div className="flex items-center justify-between border-b border-slate-800/80 pb-2">
                     <div>
@@ -1118,7 +1353,6 @@ export default function App() {
                   <span className="text-[11px] text-slate-500">Matches Step 7 tutorial</span>
                 </div>
 
-                {/* Custom input drawer if opened */}
                 {customAddressMode && (
                   <div className="mt-3 pt-3 border-t border-slate-800 grid grid-cols-2 gap-2 text-xs">
                     <div>
@@ -1236,9 +1470,8 @@ export default function App() {
               </div>
             </div>
 
-            {/* Right Column: 12-Step Automated Executor + Live Visual Progress (7 Cols) */}
+            {/* Right Column: Single Executor */}
             <div className="lg:col-span-7 space-y-6">
-              {/* Primary Automation Control Card */}
               <div className="bg-gradient-to-br from-slate-900 via-slate-900 to-fuchsia-950/30 border border-slate-800 rounded-2xl p-6 shadow-2xl relative overflow-hidden">
                 <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-6">
                   <div>
@@ -1277,7 +1510,6 @@ export default function App() {
                   </button>
                 </div>
 
-                {/* Progress Bar */}
                 <div className="space-y-2 mb-6">
                   <div className="flex items-center justify-between text-xs">
                     <span className="text-slate-400">
@@ -1297,7 +1529,6 @@ export default function App() {
                   </div>
                 </div>
 
-                {/* Completed Banner */}
                 {completedSuccess && (
                   <div className="mb-6 p-4 rounded-xl bg-emerald-950/50 border border-emerald-800/80 flex items-start gap-3">
                     <ShieldCheck className="h-5 w-5 text-emerald-400 flex-shrink-0 mt-0.5" />
@@ -1315,9 +1546,7 @@ export default function App() {
                   </div>
                 )}
 
-                {/* Before vs After Address State Comparison */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  {/* Before Box */}
                   <div className="bg-slate-950/80 border border-red-900/40 rounded-xl p-3.5">
                     <div className="flex items-center justify-between mb-2">
                       <span className="text-xs font-semibold text-red-400 flex items-center gap-1.5">
@@ -1332,12 +1561,8 @@ export default function App() {
                         50, Radha Duplex, Vijayanagar, Gandhi Chowk, Mysuru, Karnataka, 570008
                       </p>
                     </div>
-                    <div className="mt-2 text-[10px] text-red-400/80 bg-red-950/40 px-2 py-1 rounded">
-                      ⚠️ Data brokers & sellers can harvest this real address
-                    </div>
                   </div>
 
-                  {/* After Box */}
                   <div className="bg-slate-950/80 border border-emerald-900/50 rounded-xl p-3.5">
                     <div className="flex items-center justify-between mb-2">
                       <span className="text-xs font-semibold text-emerald-400 flex items-center gap-1.5">
@@ -1353,14 +1578,10 @@ export default function App() {
                         {dummyAddress.pincode}
                       </p>
                     </div>
-                    <div className="mt-2 text-[10px] text-emerald-400/90 bg-emerald-950/40 px-2 py-1 rounded">
-                      🔒 Seller only sees this dummy record. Real data erased!
-                    </div>
                   </div>
                 </div>
               </div>
 
-              {/* Live Terminal & Execution Audit Logs */}
               <div className="bg-slate-950 border border-slate-800 rounded-2xl overflow-hidden shadow-xl">
                 <div className="bg-slate-900 px-4 py-2.5 border-b border-slate-800 flex items-center justify-between">
                   <div className="flex items-center gap-2">
@@ -1441,7 +1662,6 @@ export default function App() {
             </div>
 
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-              {/* Left Column: Interactive Phone Screen Mockup (5 Cols) */}
               <div className="lg:col-span-5 flex flex-col items-center">
                 <div className="w-full max-w-sm bg-slate-950 border-4 border-slate-800 rounded-[2.5rem] p-3 shadow-2xl relative overflow-hidden">
                   <div className="w-32 h-4 bg-slate-800 rounded-full mx-auto mb-2" />
@@ -1468,7 +1688,6 @@ export default function App() {
                   <div className="w-24 h-1 bg-slate-700 rounded-full mx-auto mt-3" />
                 </div>
 
-                {/* Step Thumbnails Bar */}
                 <div className="flex gap-2 overflow-x-auto w-full max-w-sm mt-4 p-1">
                   {TUTORIAL_STEPS.map((s, idx) => (
                     <button
@@ -1486,7 +1705,6 @@ export default function App() {
                 </div>
               </div>
 
-              {/* Right Column: Deep Security Audit & Explanation (7 Cols) */}
               <div className="lg:col-span-7 space-y-5">
                 <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-xl">
                   <div className="flex items-center gap-2.5 mb-2">
@@ -1505,7 +1723,6 @@ export default function App() {
                   </p>
                 </div>
 
-                {/* Question Breakdown: What addresses are being edited? */}
                 <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-xl space-y-4">
                   <div className="flex items-center gap-2">
                     <Info className="h-5 w-5 text-fuchsia-400" />
@@ -1880,6 +2097,20 @@ export default function App() {
                 <p className="font-bold text-emerald-400 mt-0.5 uppercase">{selectedBulkAccount.status}</p>
               </div>
             </div>
+
+            {selectedBulkAccount.instance_id && (
+              <div className="bg-slate-950 p-3 rounded-xl border border-slate-800 text-xs">
+                <span className="text-slate-500 text-[10px] uppercase font-bold block">Device Instance ID:</span>
+                <p className="font-mono text-slate-300 mt-0.5 break-all">{selectedBulkAccount.instance_id}</p>
+              </div>
+            )}
+
+            {selectedBulkAccount.isDuplicate && (
+              <div className="bg-amber-950/40 p-3 rounded-xl border border-amber-800 text-xs text-amber-300">
+                <span className="font-bold block">⚠️ Duplicate Detected:</span>
+                <p>{selectedBulkAccount.duplicateReason}</p>
+              </div>
+            )}
 
             {selectedBulkAccount.afterAddress && (
               <div className="bg-slate-950 p-3.5 rounded-xl border border-emerald-900/60 text-xs space-y-1">
