@@ -1,52 +1,64 @@
 """
-Meesho API Engine & 12-Step Address Scrambling Automation
-----------------------------------------------------------
-Handles authentic Meesho session authentication, JWT decoding, address book scrubbing,
-and the 12-step return pickup overwrite & cancellation technique.
+Meesho Address Manager — Core Data & Address Engine
+---------------------------------------------------
+A secure, honest utility for validating, sanitizing, deduplicating,
+and exporting Meesho delivery address records (JSON & CSV).
+
+Design & Security Principles:
+- NEVER fabricates fake server-side success responses or order mutations.
+- Distinguishes local JWT decoding from server-verified authentication.
+- Never logs or exposes raw tokens, secrets, or cookies.
+- Focuses on user-controlled data management: preview, validation, editing, deduplication, and export.
 """
 
 import base64
+import csv
 import json
 import logging
-import random
-import time
-import datetime
-from typing import Dict, Any, List, Optional, Tuple, Callable
+import re
+from io import StringIO
+from typing import Dict, Any, List, Optional, Tuple
 
-import requests
+log = logging.getLogger("meesho-address-engine")
 
-log = logging.getLogger("meesho-engine")
-
-MEESHO_USER_AGENT = "Meesho/Android 14.5.1 (Linux; U; Android 13; SM-G998B Build/TP1A.220624.014)"
-CLIENT_ID = "android"
-APP_VERSION = "14.5.1"
-ISO_COUNTRY = "IN"
-
-DEFAULT_DUMMY = {
-    "name": "Aaaa",
-    "number": "+91 9876543210",
-    "phone": "+91 9876543210",
-    "address": "abcd",
-    "road": "edghi",
-    "city": "jkl",
-    "state": "Delhi",
-    "pincode": "110001"
-}
+# Default Indian dummy address generator for privacy masking
+DUMMY_NAMES = ["Aaaa", "R. K. Verma", "P. Kumar", "S. Gupta", "A. Sharma"]
+DUMMY_STREETS = ["abcd", "House 42, Block B", "Flat 101, Galaxy Heights", "Plot 99, Industrial Area"]
+DUMMY_ROADS = ["edghi", "Near Old Metro Station", "Ring Road Bypass", "Sector 9 Colony"]
+DUMMY_CITIES = [
+    {"city": "Delhi", "state": "Delhi", "pincode": "110001"},
+    {"city": "Mumbai", "state": "Maharashtra", "pincode": "400001"},
+    {"city": "Bengaluru", "state": "Karnataka", "pincode": "560001"},
+    {"city": "Kolkata", "state": "West Bengal", "pincode": "700001"},
+    {"city": "Hyderabad", "state": "Telangana", "pincode": "500001"},
+]
 
 
-def decode_meesho_jwt(token_str: str) -> Dict[str, Any]:
-    """Decodes composite or standard JWTs from Meesho session tokens."""
+def mask_token(token: Optional[str]) -> str:
+    """Safely masks a token for preview without leaking secrets."""
+    if not token or not isinstance(token, str):
+        return ""
+    token = token.strip()
+    if len(token) <= 12:
+        return "***"
+    return f"{token[:6]}...{token[-4:]}"
+
+
+def inspect_session_token_locally(token_str: str) -> Dict[str, Any]:
+    """
+    Safely inspects JWT or composite token claims locally WITHOUT making
+    unverified server claims.
+    """
     if not token_str or not isinstance(token_str, str):
-        return {}
+        return {"has_token": False, "status": "no_token_provided"}
 
     token_str = token_str.strip()
-
-    # Check if composite token (format: base64(meta).base64(payload))
     inner_jwt = ""
     xo_hash = ""
+
+    # Check for Meesho composite format (base64(header).base64(body))
     if "." in token_str:
         parts = token_str.split(".")
-        # Could be composite format
         try:
             p2 = parts[1]
             p2 += "=" * ((4 - len(p2) % 4) % 4)
@@ -58,9 +70,8 @@ def decode_meesho_jwt(token_str: str) -> Dict[str, Any]:
             pass
 
     target_jwt = inner_jwt if inner_jwt else token_str
-
-    # Decode target JWT claims
     claims: Dict[str, Any] = {}
+
     if "." in target_jwt:
         jwt_parts = target_jwt.split(".")
         if len(jwt_parts) >= 2:
@@ -71,469 +82,232 @@ def decode_meesho_jwt(token_str: str) -> Dict[str, Any]:
             except Exception:
                 pass
 
-    if xo_hash:
-        claims["xo_hash"] = xo_hash
-    if inner_jwt:
-        claims["inner_jwt"] = inner_jwt
-
-    return claims
-
-
-def extract_credentials(raw: Any) -> Dict[str, Any]:
-    """Extracts all tokens, phone numbers, instance IDs, and headers from account JSON."""
-    if isinstance(raw, str):
-        try:
-            raw = json.loads(raw)
-        except Exception:
-            return {"token": raw.strip()}
-
-    if not isinstance(raw, dict):
-        return {}
-
-    xo_token = raw.get("xo_token") or raw.get("xo") or ""
-    ox_token = raw.get("ox_token") or raw.get("ox") or ""
-    direct_token = (
-        raw.get("token")
-        or raw.get("authToken")
-        or raw.get("auth_token")
-        or raw.get("accessToken")
-        or raw.get("access_token")
-        or (raw.get("authorization") or "").replace("Bearer ", "")
-        or (raw.get("Authorization") or "").replace("Bearer ", "")
-        or ""
-    )
-
-    token_to_decode = xo_token or direct_token
-    claims = decode_meesho_jwt(token_to_decode)
-
-    user_id = (
-        raw.get("user_id")
-        or raw.get("userId")
-        or claims.get("https://meesho.com/user_id")
-        or claims.get("user_id")
-        or claims.get("sub")
-        or ""
-    )
-
-    instance_id = (
-        raw.get("instance_id")
-        or raw.get("instance")
-        or claims.get("https://meesho.com/instance_id")
-        or claims.get("instance_id")
-        or ""
-    )
-
-    phone = (
-        raw.get("phone")
-        or raw.get("mobile")
-        or raw.get("phoneNumber")
-        or raw.get("mobile_number")
-        or ""
-    )
-
-    exp_timestamp = claims.get("exp")
-    exp_formatted = ""
-    is_expired = False
-    if exp_timestamp:
-        try:
-            exp_dt = datetime.datetime.fromtimestamp(exp_timestamp, datetime.timezone.utc)
-            now_dt = datetime.datetime.now(datetime.timezone.utc)
-            is_expired = exp_dt < now_dt
-            exp_formatted = exp_dt.strftime("%Y-%m-%d %H:%M:%S UTC")
-        except Exception:
-            pass
-
-    cookies = raw.get("cookies") or raw.get("cookie") or ""
+    user_id = str(claims.get("https://meesho.com/user_id") or claims.get("user_id") or claims.get("sub") or "")
+    instance_id = str(claims.get("https://meesho.com/instance_id") or claims.get("instance_id") or "")
+    country_code = str(claims.get("https://meesho.com/iso_country_code") or "IN")
 
     return {
-        "xo_token": xo_token,
-        "ox_token": ox_token,
-        "raw_token": direct_token or xo_token,
-        "inner_jwt": claims.get("inner_jwt") or direct_token or xo_token,
-        "user_id": str(user_id) if user_id else "",
-        "instance_id": str(instance_id) if instance_id else "",
-        "phone": str(phone) if phone else "",
-        "exp_timestamp": exp_timestamp,
-        "exp_formatted": exp_formatted,
-        "is_expired": is_expired,
-        "cookies": cookies,
-        "claims": claims,
+        "has_token": True,
+        "token_preview": mask_token(token_str),
+        "user_id": user_id,
+        "instance_id_preview": mask_token(instance_id) if instance_id else "",
+        "country_code": country_code,
+        "claims_extracted": bool(claims),
+        "verification_status": "unverified_local_token",
+        "notice": (
+            "Local token inspection only. Meesho does not provide a public developer API, "
+            "so server-side authentication cannot be verified programmatically without mobile APK credentials."
+        )
     }
 
 
-class MeeshoClient:
-    """Authentic Meesho API client supporting authentication, address manipulation, and returns."""
-
-    def __init__(self, account_data: Dict[str, Any]):
-        self.creds = extract_credentials(account_data)
-        self.session = requests.Session()
-        self.headers = self._build_headers()
-
-    def _build_headers(self) -> Dict[str, str]:
-        auth_val = self.creds.get("inner_jwt") or self.creds.get("raw_token") or ""
-        xo_val = self.creds.get("xo_token") or auth_val
-
-        h = {
-            "User-Agent": MEESHO_USER_AGENT,
-            "Accept": "application/json",
-            "Content-Type": "application/json",
-            "client-id": CLIENT_ID,
-            "app-version": APP_VERSION,
-            "meesho-iso-country-code": ISO_COUNTRY,
+def validate_address_record(raw: Any, index: int = 1) -> Dict[str, Any]:
+    """
+    Validates a single address record.
+    Checks for essential delivery fields: name, phone, address/house, city, state, pincode.
+    """
+    if not isinstance(raw, dict):
+        return {
+            "id": f"rec_{index}",
+            "index": index,
+            "name": "Invalid Record",
+            "phone": "",
+            "house": "",
+            "road": "",
+            "city": "",
+            "state": "",
+            "pincode": "",
+            "is_valid": False,
+            "missing_fields": ["record_is_not_a_json_object"],
+            "raw": str(raw)
         }
 
-        if auth_val:
-            h["meesho-auth"] = auth_val
-            h["x-session-token"] = xo_val
-            if not auth_val.startswith("Bearer "):
-                h["Authorization"] = f"Bearer {auth_val}"
+    # Extract flexible field names
+    name = str(raw.get("name") or raw.get("recipient_name") or raw.get("fullName") or raw.get("customer_name") or "").strip()
+    phone = str(raw.get("phone") or raw.get("mobile") or raw.get("number") or raw.get("contact_number") or raw.get("phoneNumber") or "").strip()
+    house = str(raw.get("house") or raw.get("house_no") or raw.get("address") or raw.get("building") or raw.get("flat") or "").strip()
+    road = str(raw.get("road") or raw.get("road_name") or raw.get("colony") or raw.get("area") or raw.get("locality") or raw.get("street") or "").strip()
+    city = str(raw.get("city") or raw.get("town") or "").strip()
+    state = str(raw.get("state") or raw.get("region") or "").strip()
+    pincode = str(raw.get("pincode") or raw.get("pin") or raw.get("postal_code") or raw.get("zip") or "").strip()
+
+    missing: List[str] = []
+    if not name:
+        missing.append("name")
+    if not phone:
+        missing.append("phone")
+    if not house and not road:
+        missing.append("address_or_street")
+    if not city:
+        missing.append("city")
+    if not pincode:
+        missing.append("pincode")
+
+    # Indian pincode format check (6 digits)
+    pincode_clean = re.sub(r"[^0-9]", "", pincode)
+    is_pincode_valid = len(pincode_clean) == 6 if pincode else False
+    if pincode and not is_pincode_valid:
+        missing.append("pincode_must_be_6_digits")
+
+    is_valid = len(missing) == 0
+
+    return {
+        "id": f"rec_{index}_{hash((name, phone, house, pincode)) & 0xffffffff}",
+        "index": index,
+        "name": name,
+        "phone": phone,
+        "house": house,
+        "road": road,
+        "city": city,
+        "state": state,
+        "pincode": pincode,
+        "is_valid": is_valid,
+        "missing_fields": missing,
+        "raw": raw
+    }
+
+
+def parse_and_validate_addresses(raw_list: List[Any]) -> Tuple[List[Dict[str, Any]], int, int]:
+    """
+    Parses a list of address dictionaries, validates each, and marks duplicates.
+    Returns (validated_records, valid_count, duplicate_count).
+    """
+    phone_map: Dict[str, int] = {}
+    validated_records: List[Dict[str, Any]] = []
+    duplicate_count = 0
+    valid_count = 0
+
+    for idx, item in enumerate(raw_list, 1):
+        record = validate_address_record(item, index=idx)
+
+        # Clean phone for duplicate matching
+        phone_digits = re.sub(r"[^0-9]", "", record["phone"])
+        is_dup = False
+        dup_reason = ""
+
+        if len(phone_digits) >= 10:
+            last10 = phone_digits[-10:]
+            if last10 in phone_map:
+                is_dup = True
+                duplicate_count += 1
+                dup_reason = f"Matches phone with Record #{phone_map[last10]}"
             else:
-                h["Authorization"] = auth_val
+                phone_map[last10] = idx
 
-        if self.creds.get("instance_id"):
-            h["x-instance-id"] = self.creds["instance_id"]
-            h["instance_id"] = self.creds["instance_id"]
+        record["is_duplicate"] = is_dup
+        record["duplicate_reason"] = dup_reason
 
-        if self.creds.get("ox_token"):
-            h["x-ox-token"] = self.creds["ox_token"]
+        if record["is_valid"] and not is_dup:
+            valid_count += 1
 
-        if self.creds.get("user_id"):
-            h["x-user-id"] = self.creds["user_id"]
+        validated_records.append(record)
 
-        if self.creds.get("cookies"):
-            h["Cookie"] = self.creds["cookies"]
+    return validated_records, valid_count, duplicate_count
 
-        return h
 
-    def login_and_verify(self) -> Dict[str, Any]:
-        """Attempts live login / profile check against Meesho endpoints."""
-        endpoints = [
-            "https://user-service.meesho.com/api/v1/user/profile",
-            "https://prod.meeshoapi.com/api/v1/user/profile",
-            "https://api.meesho.com/v1/users/profile",
-            "https://meesho.com/api/v1/customer/profile",
-        ]
+def generate_dummy_mask() -> Dict[str, str]:
+    """Generates a safe placeholder Indian address for privacy masking."""
+    city_info = random.choice(DUMMY_CITIES)
+    rand_phone = f"+91 {random.randint(6000000000, 9999999999)}"
+    return {
+        "name": random.choice(DUMMY_NAMES),
+        "phone": rand_phone,
+        "house": random.choice(DUMMY_STREETS),
+        "road": random.choice(DUMMY_ROADS),
+        "city": city_info["city"],
+        "state": city_info["state"],
+        "pincode": city_info["pincode"],
+        "is_mask": "true"
+    }
 
-        auth_token = self.creds.get("raw_token")
-        if not auth_token and not self.creds.get("cookies"):
-            return {
-                "success": False,
-                "status": "NO_TOKEN",
-                "error": "No auth token or session cookies found in JSON.",
-                "details": self.creds
-            }
 
-        last_status = 0
-        last_error = ""
+def export_to_csv(records: List[Dict[str, Any]]) -> str:
+    """Exports validated records to a clean CSV string."""
+    output = StringIO()
+    fieldnames = ["Index", "Status", "Name", "Phone", "House_Building", "Road_Colony", "City", "State", "Pincode", "Notes"]
+    writer = csv.DictWriter(output, fieldnames=fieldnames)
+    writer.writeheader()
 
-        for url in endpoints:
-            try:
-                resp = self.session.get(url, headers=self.headers, timeout=5)
-                last_status = resp.status_code
-                if resp.status_code == 200:
-                    try:
-                        data = resp.json()
-                        return {
-                            "success": True,
-                            "status": "AUTHENTICATED",
-                            "http_code": 200,
-                            "profile": data,
-                            "url": url,
-                            "details": self.creds
-                        }
-                    except Exception:
-                        pass
-                elif resp.status_code == 401:
-                    last_error = "HTTP 401 Unauthorized (Session Expired or Token Rejected)"
-                elif resp.status_code == 403:
-                    last_error = "HTTP 403 Forbidden (Cloudflare/Akamai Challenge or IP verification)"
-            except Exception as e:
-                last_error = str(e)
+    for r in records:
+        status_label = "VALID" if r.get("is_valid") and not r.get("is_duplicate") else (
+            "DUPLICATE" if r.get("is_duplicate") else "INCOMPLETE"
+        )
+        notes = r.get("duplicate_reason") or (", ".join(r.get("missing_fields", []))) or "OK"
+        writer.writerow({
+            "Index": r.get("index", 1),
+            "Status": status_label,
+            "Name": r.get("name", ""),
+            "Phone": r.get("phone", ""),
+            "House_Building": r.get("house", ""),
+            "Road_Colony": r.get("road", ""),
+            "City": r.get("city", ""),
+            "State": r.get("state", ""),
+            "Pincode": r.get("pincode", ""),
+            "Notes": notes
+        })
 
-        # If token has valid unexpired JWT structure, we can verify session claims
-        if self.creds.get("claims") and not self.creds.get("is_expired"):
-            return {
-                "success": True,
-                "status": "SESSION_VALID_LOCAL",
-                "http_code": last_status or 200,
-                "profile": {
-                    "userId": self.creds.get("user_id") or "Live Customer",
-                    "phone": self.creds.get("phone") or "Verified Phone",
-                    "expiresAt": self.creds.get("exp_formatted"),
-                },
-                "details": self.creds,
-                "notice": f"Session JWT active till {self.creds.get('exp_formatted')}. Proceeding with automation."
-            }
+    return output.getvalue()
 
-        return {
-            "success": False,
-            "status": "LOGIN_FAILED",
-            "http_code": last_status,
-            "error": last_error or f"Session rejected by Meesho servers (Status {last_status}).",
-            "details": self.creds
+
+def export_to_json(records: List[Dict[str, Any]]) -> str:
+    """Exports clean, sanitized records as formatted JSON."""
+    clean_list = []
+    for r in records:
+        clean_list.append({
+            "name": r.get("name", ""),
+            "phone": r.get("phone", ""),
+            "house_building": r.get("house", ""),
+            "road_area": r.get("road", ""),
+            "city": r.get("city", ""),
+            "state": r.get("state", ""),
+            "pincode": r.get("pincode", ""),
+            "is_valid": r.get("is_valid", False),
+            "is_duplicate": r.get("is_duplicate", False)
+        })
+    return json.dumps({"exported_at": "UTC", "total_records": len(clean_list), "addresses": clean_list}, indent=2)
+
+
+def get_sample_demo_records() -> List[Dict[str, Any]]:
+    """Returns sample records explicitly labeled as simulated demo data."""
+    return [
+        {
+            "name": "Amit Sharma",
+            "phone": "+91 6221468377",
+            "house": "50, Radha Duplex",
+            "road": "Vijayanagar, Gandhi Chowk",
+            "city": "Mysuru",
+            "state": "Karnataka",
+            "pincode": "570008",
+            "is_demo": True
+        },
+        {
+            "name": "Pooja Verma",
+            "phone": "+91 9876543210",
+            "house": "Flat 304, Green Palms",
+            "road": "Ring Road Sector 4",
+            "city": "Delhi",
+            "state": "Delhi",
+            "pincode": "110001",
+            "is_demo": True
+        },
+        {
+            "name": "Rahul Kumar",
+            "phone": "+91 9876543210",  # Intended duplicate phone for testing
+            "house": "House 12",
+            "road": "Station Road",
+            "city": "Delhi",
+            "state": "Delhi",
+            "pincode": "110001",
+            "is_demo": True
+        },
+        {
+            "name": "Incomplete Record",
+            "phone": "+91 9123456789",
+            "house": "Shop 4",
+            "road": "Main Bazaar",
+            "city": "",
+            "state": "Rajasthan",
+            "pincode": "99",  # Invalid pincode
+            "is_demo": True
         }
-
-    def fetch_addresses(self) -> List[Dict[str, Any]]:
-        """Queries customer addresses from Meesho."""
-        endpoints = [
-            "https://api.meesho.com/v1/customer/address",
-            "https://logistics-service.meesho.com/api/v1/address",
-            "https://meesho.com/api/v1/customer/address"
-        ]
-        for url in endpoints:
-            try:
-                resp = self.session.get(url, headers=self.headers, timeout=4)
-                if resp.status_code == 200:
-                    data = resp.json()
-                    if isinstance(data, list):
-                        return data
-                    elif isinstance(data, dict):
-                        return data.get("addresses") or data.get("data") or [data]
-            except Exception:
-                pass
-        return []
-
-    def fetch_orders(self) -> List[Dict[str, Any]]:
-        """Queries recent orders eligible for return / address edit."""
-        endpoints = [
-            "https://order-service.meesho.com/api/v1/orders",
-            "https://api.meesho.com/v1/orders",
-            "https://meesho.com/api/v1/orders"
-        ]
-        for url in endpoints:
-            try:
-                resp = self.session.get(url, headers=self.headers, timeout=4)
-                if resp.status_code == 200:
-                    data = resp.json()
-                    if isinstance(data, list):
-                        return data
-                    elif isinstance(data, dict):
-                        return data.get("orders") or data.get("data") or []
-            except Exception:
-                pass
-
-        # Return realistic fallback order reflecting user's screenshot
-        return [{
-            "order_id": "344628373002060864",
-            "title": "NON WOVEN PRINTED SAREE COVER (Pack of 8)",
-            "status": "Delivered Early",
-            "return_window_active": True,
-            "amount": "₹62",
-            "current_address": {
-                "name": "Amit Sharma",
-                "phone": "+91 6221468377",
-                "address": "50, Radha Duplex, Vijayanagar, Gandhi Chowk, Mysuru, Opposite Shiv Mandir, Mysuru, Karnataka, 570008"
-            }
-        }]
-
-    def delete_or_scramble_address_book(self, dummy: Dict[str, str]) -> Dict[str, Any]:
-        """Hard deletes secondary addresses & scrambles the default primary address."""
-        addresses = self.fetch_addresses()
-        deleted_count = 0
-        scrambled_count = 0
-
-        for addr in addresses:
-            addr_id = addr.get("id") or addr.get("address_id")
-            if not addr_id:
-                continue
-
-            # 1. Attempt Hard DELETE
-            del_success = False
-            for del_url in [
-                f"https://api.meesho.com/v1/customer/address/{addr_id}",
-                f"https://meesho.com/api/v1/customer/address/{addr_id}"
-            ]:
-                try:
-                    r = self.session.delete(del_url, headers=self.headers, timeout=3)
-                    if r.status_code in [200, 204]:
-                        del_success = True
-                        deleted_count += 1
-                        break
-                except Exception:
-                    pass
-
-            # 2. If DELETE rejected (e.g. primary address), perform PUT overwrite with dummy data
-            if not del_success:
-                update_payload = {
-                    "name": dummy.get("name", "Aaaa"),
-                    "contact_number": dummy.get("number", "+91 9876543210"),
-                    "house_no": dummy.get("address", "abcd"),
-                    "road_name": dummy.get("road", "edghi"),
-                    "city": dummy.get("city", "jkl"),
-                    "state": dummy.get("state", "Delhi"),
-                    "pincode": dummy.get("pincode", "110001"),
-                    "is_default": True
-                }
-                for update_url in [
-                    f"https://api.meesho.com/v1/customer/address/{addr_id}",
-                    f"https://meesho.com/api/v1/customer/address/{addr_id}"
-                ]:
-                    try:
-                        r = self.session.put(update_url, headers=self.headers, json=update_payload, timeout=3)
-                        if r.status_code in [200, 201]:
-                            scrambled_count += 1
-                            break
-                    except Exception:
-                        pass
-
-        return {
-            "deleted_count": deleted_count,
-            "scrambled_count": scrambled_count,
-            "total_found": len(addresses),
-            "dummy_applied": dummy
-        }
-
-    def execute_full_12_step_pipeline(
-        self,
-        dummy: Optional[Dict[str, str]] = None,
-        progress_callback: Optional[Callable[[int, str, str, str], None]] = None
-    ) -> Dict[str, Any]:
-        """
-        Executes the exact 12-step return overwrite & cancellation sequence shown in screenshots:
-        1. Tap on Return/Exchange on delivered order
-        2. Select Reason: 'Product not needed anymore'
-        3. Select Sub-Reason: 'Did not like the product'
-        4. Select option: 'Return'
-        5. Tap EDIT on Pickup Address
-        6 & 7. Enter random address (Name: Aaaa, Contact: +91 9876543210, House: abcd, Road: edghi, Pincode: 110001, City: jkl, State: Delhi)
-        8. Select the random address
-        9. Submit Return/Exchange with random address (Forces database overwrite of seller records)
-        10. Return/Exchange initiated confirmation
-        11. Check Return/Exchange in My Orders ('Return Requested / Waiting for confirmation')
-        12. Cancel Return/Exchange order (Keep product, seller data permanently scrambled!)
-        """
-        active_dummy = dummy or DEFAULT_DUMMY
-        orders = self.fetch_orders()
-        target_order = orders[0] if orders else {
-            "order_id": "344628373002060864",
-            "title": "NON WOVEN PRINTED SAREE COVER (Pack of 8)",
-            "amount": "₹62"
-        }
-        order_id = target_order.get("order_id") or target_order.get("orderId") or "344628373002060864"
-        item_title = target_order.get("title") or "Delivered Order"
-
-        steps = [
-            (
-                1,
-                "Tap on Return/Exchange",
-                f"Checking order #{order_id} ({item_title}). Return/Exchange window active (< 7 days)."
-            ),
-            (
-                2,
-                "Select Reason: Product not needed anymore",
-                "Selected primary reason category: 'Product not needed anymore' (Didn't like the product or ordered by mistake)."
-            ),
-            (
-                3,
-                "Select Sub-Reason: Did not like the product",
-                "Selected sub-reason: 'Did not like the product'."
-            ),
-            (
-                4,
-                "Select Available Option: Return",
-                f"Selected option 'Return' (Refund amount: {target_order.get('amount', '₹62')} Back to Source)."
-            ),
-            (
-                5,
-                "Tap EDIT on Pickup Address",
-                "Accessing pickup address change modal to replace real customer details."
-            ),
-            (
-                6,
-                "Generate Random Masking Address",
-                f"Generated dummy identity: {active_dummy['name']}, {active_dummy['number']}, {active_dummy['pincode']}."
-            ),
-            (
-                7,
-                "Enter Random Address into Meesho Form",
-                f"Injected dummy data: Name: {active_dummy['name']}, Contact: {active_dummy['number']}, "
-                f"House: {active_dummy['address']}, Road: {active_dummy['road']}, City: {active_dummy['city']}, "
-                f"State: {active_dummy['state']}, Pincode: {active_dummy['pincode']}."
-            ),
-            (
-                8,
-                "Select Random Address as Active Pickup",
-                f"Selected dummy address '{active_dummy['name']}, {active_dummy['address']}, {active_dummy['city']}' as the active pickup location."
-            ),
-            (
-                9,
-                "Submit Return/Exchange with Random Address",
-                "Submitted return request to Meesho API. Backend updates order address record in seller database!"
-            ),
-            (
-                10,
-                "Return/Exchange Initiated",
-                f"Return request submitted (RET-{order_id[-6:]}). Previous real address is now erased from seller view!"
-            ),
-            (
-                11,
-                "Check Return/Exchange in My Orders",
-                "Verified order state: 'Return Requested - Waiting for confirmation'. Address overwrite confirmed in database."
-            ),
-            (
-                12,
-                "Execute 'Cancel Return' Order",
-                "Triggered Cancel Return API ('Do not want to return? Cancel Return'). "
-                "The return is cancelled, buyer keeps the product, and seller only retains the scrambled random address!"
-            )
-        ]
-
-        step_logs = []
-        for step_num, title, desc in steps:
-            if progress_callback:
-                try:
-                    progress_callback(step_num, title, desc, "running")
-                except Exception:
-                    pass
-
-            # Make authentic calls for critical steps
-            if step_num == 9:
-                # Submit return with dummy address
-                try:
-                    self.session.post(
-                        f"https://order-service.meesho.com/api/v1/orders/{order_id}/return",
-                        headers=self.headers,
-                        json={
-                            "reason_code": "PRODUCT_NOT_NEEDED",
-                            "sub_reason_code": "DID_NOT_LIKE",
-                            "action": "RETURN",
-                            "pickup_address": active_dummy
-                        },
-                        timeout=4
-                    )
-                except Exception:
-                    pass
-            elif step_num == 12:
-                # Cancel return
-                try:
-                    self.session.post(
-                        f"https://order-service.meesho.com/api/v1/orders/{order_id}/return/cancel",
-                        headers=self.headers,
-                        json={"order_id": order_id, "action": "CANCEL_RETURN"},
-                        timeout=4
-                    )
-                except Exception:
-                    pass
-
-            step_logs.append({
-                "step": step_num,
-                "title": title,
-                "description": desc,
-                "timestamp": datetime.datetime.now().strftime("%H:%M:%S"),
-                "status": "success"
-            })
-
-            # Small realistic execution delay
-            time.sleep(0.4)
-
-        # Also scrub the address book
-        addr_result = self.delete_or_scramble_address_book(active_dummy)
-
-        return {
-            "order_id": order_id,
-            "item_title": item_title,
-            "status": "PROTECTED",
-            "dummy_used": active_dummy,
-            "steps": step_logs,
-            "address_book": addr_result
-        }
+    ]
