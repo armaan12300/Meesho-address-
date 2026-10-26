@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Private, browser-based address JSON and CSV organizer">
+  <title>Address Manager</title>
+  <link rel="stylesheet" href="./style.css">
+</head>
+<body>
+  <main class="shell">
+    <header class="hero">
+      <div class="mark">⌂</div>
+      <div>
+        <p class="eyebrow">PRIVATE • LOCAL-FIRST</p>
+        <h1>Address Manager</h1>
+        <p class="sub">Import · Preview · Validate · Export</p>
+      </div>
+    </header>
+
+    <section class="privacy" role="note">
+      <strong>🔒 Your records stay in this browser.</strong>
+      <span>Records are saved in this browser’s local storage and are not uploaded by this website. Avoid shared devices; clearing browser data may erase saved records. This tool never signs in to or changes any shopping account.</span>
+    </section>
+
+    <section class="panel">
+      <div class="section-heading">
+        <div><p class="eyebrow">STEP 01</p><h2>Import address records</h2></div>
+        <button id="templateBtn" class="button secondary" type="button">Get template</button>
+      </div>
+      <label class="dropzone" for="fileInput">
+        <span class="upload-icon">↑</span>
+        <strong>Choose a JSON file</strong>
+        <span>JSON list or an object containing an “addresses” list · max 1 MB · 500 records</span>
+        <input id="fileInput" type="file" accept=".json,application/json">
+      </label>
+      <p id="status" class="status" aria-live="polite">No file selected yet.</p>
+    </section>
+
+    <section id="workspace" class="panel hidden">
+      <div class="section-heading">
+        <div><p class="eyebrow">STEP 02</p><h2>Records <span id="count" class="count">0</span></h2></div>
+        <button id="clearBtn" class="button secondary" type="button">Clear all</button>
+      </div>
+      <div class="toolbar">
+        <input id="searchInput" type="search" placeholder="Search name, city, pincode…" aria-label="Search records">
+        <select id="filterSelect" aria-label="Filter validation">
+          <option value="all">All records</option>
+          <option value="valid">Valid only</option>
+          <option value="issues">Needs review</option>
+        </select>
+      </div>
+      <div id="summary" class="summary"></div>
+      <div id="records" class="records"></div>
+      <div class="export-row">
+        <button id="jsonBtn" class="button primary" type="button">Export JSON</button>
+        <button id="csvBtn" class="button secondary" type="button">Export CSV</button>
+      </div>
+      <p class="footnote">Validation checks required fields, a 6-digit pincode, and basic phone-number format. Always review the address yourself.</p>
+    </section>
+    <footer>Address Manager · No account login · No credentials · No automatic account changes</footer>
+  </main>
+  <script src="./app.js"></script>
+</body>
+</html>

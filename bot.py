@@ -39,6 +39,8 @@ load_dotenv()
 
 TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "").strip()
 APP_URL = os.getenv("APP_URL", "https://ais-dev-4fxlnvf7ox3uamx4iurjwm-955897745705.asia-southeast1.run.app").strip()
+if APP_URL and not APP_URL.startswith("http"):
+    APP_URL = f"https://{APP_URL}"
 MAX_FILE_BYTES = 5_000_000
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")

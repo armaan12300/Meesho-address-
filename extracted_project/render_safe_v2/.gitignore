@@ -1,0 +1,8 @@
+.env
+__pycache__/
+*.py[cod]
+*.csv
+*.json.tmp
+.venv/
+venv/
+.DS_Store
