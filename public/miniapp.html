@@ -3,162 +3,357 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Address Mini App</title>
+    <title>Meesho Address Shield Mini App</title>
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <style>
       :root {
-        --bg: #0f172a;
-        --panel: #111827;
-        --card: #ffffff;
-        --primary: #2ea6ff;
-        --primary-dark: #1f7fd8;
-        --text: #0f172a;
-        --muted: #4b5563;
-        --success: #16a34a;
+        --bg: var(--tg-theme-bg-color, #0f172a);
+        --text: var(--tg-theme-text-color, #f8fafc);
+        --hint: var(--tg-theme-hint-color, #94a3b8);
+        --button: var(--tg-theme-button-color, #2ea6ff);
+        --button-text: var(--tg-theme-button-text-color, #ffffff);
+        --secondary-bg: var(--tg-theme-secondary-bg-color, #1e293b);
+        --border: rgba(255, 255, 255, 0.1);
+        --success: #10b981;
       }
-
       * { box-sizing: border-box; }
-
       body {
         margin: 0;
         min-height: 100vh;
-        background: linear-gradient(180deg, #eef6ff 0%, #f8fafc 100%);
-        font-family: Arial, Helvetica, sans-serif;
+        background: var(--bg);
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
         color: var(--text);
         display: flex;
         justify-content: center;
         align-items: flex-start;
-        padding: 24px 16px;
+        padding: 16px;
       }
-
       .card {
         width: min(100%, 460px);
-        background: var(--card);
+        background: var(--secondary-bg);
+        border: 1px solid var(--border);
         border-radius: 20px;
-        box-shadow: 0 16px 40px rgba(15, 23, 42, 0.14);
-        padding: 22px;
+        box-shadow: 0 16px 40px rgba(0, 0, 0, 0.3);
+        padding: 20px;
       }
-
-      h2 {
-        margin: 0 0 12px;
+      .header {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        margin-bottom: 6px;
+      }
+      .header-icon {
         font-size: 24px;
       }
-
-      p {
-        margin: 0 0 18px;
-        color: var(--muted);
-        font-size: 14px;
+      h2 {
+        margin: 0;
+        font-size: 20px;
+        font-weight: 700;
+        color: var(--text);
       }
-
+      p.subtitle {
+        margin: 0 0 16px;
+        color: var(--hint);
+        font-size: 13px;
+        line-height: 1.4;
+      }
+      .tabs {
+        display: flex;
+        background: rgba(0, 0, 0, 0.2);
+        padding: 3px;
+        border-radius: 12px;
+        margin-bottom: 16px;
+        border: 1px solid var(--border);
+      }
+      .tab-btn {
+        flex: 1;
+        background: transparent;
+        border: none;
+        color: var(--hint);
+        padding: 8px 10px;
+        font-size: 13px;
+        font-weight: 600;
+        border-radius: 9px;
+        cursor: pointer;
+        transition: all 0.2s;
+      }
+      .tab-btn.active {
+        background: var(--button);
+        color: var(--button-text);
+      }
       form {
         display: grid;
-        gap: 12px;
+        gap: 10px;
       }
-
-      input {
+      .input-group {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+      }
+      label {
+        font-size: 11px;
+        text-transform: uppercase;
+        font-weight: 700;
+        color: var(--hint);
+        letter-spacing: 0.5px;
+      }
+      input, textarea {
         width: 100%;
-        border: 1px solid #dbe3ee;
-        border-radius: 12px;
-        background: #f8fafc;
-        padding: 12px 14px;
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        background: rgba(0, 0, 0, 0.25);
+        color: var(--text);
+        padding: 10px 12px;
         font-size: 14px;
         outline: none;
+        transition: border-color 0.2s;
       }
-
-      input:focus {
-        border-color: var(--primary);
-        box-shadow: 0 0 0 3px rgba(46, 166, 255, 0.12);
+      textarea {
+        font-family: monospace;
+        resize: vertical;
+        min-height: 120px;
       }
-
-      button {
+      input:focus, textarea:focus {
+        border-color: var(--button);
+      }
+      .grid-2 {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 10px;
+      }
+      .btn-row {
+        display: flex;
+        gap: 8px;
+        margin-top: 6px;
+      }
+      button.btn-primary {
+        flex: 1;
         border: none;
         border-radius: 12px;
-        background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%);
-        color: white;
+        background: var(--button);
+        color: var(--button-text);
         font-weight: 700;
-        font-size: 15px;
-        padding: 14px 16px;
+        font-size: 14px;
+        padding: 12px 14px;
         cursor: pointer;
       }
-
-      button:hover {
-        filter: brightness(1.04);
-      }
-
-      .status {
-        margin-top: 14px;
+      button.btn-secondary {
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        background: rgba(255, 255, 255, 0.05);
+        color: var(--text);
+        font-weight: 600;
         font-size: 13px;
-        color: var(--muted);
-        min-height: 20px;
+        padding: 12px 14px;
+        cursor: pointer;
       }
-
+      button:hover {
+        filter: brightness(1.08);
+      }
+      .status {
+        margin-top: 12px;
+        font-size: 13px;
+        color: var(--hint);
+        min-height: 18px;
+        text-align: center;
+      }
       .status.success {
         color: var(--success);
         font-weight: 600;
+      }
+      .badge-info {
+        background: rgba(46, 166, 255, 0.12);
+        border: 1px solid rgba(46, 166, 255, 0.3);
+        border-radius: 10px;
+        padding: 10px;
+        font-size: 12px;
+        color: #93c5fd;
+        margin-top: 14px;
+        line-height: 1.4;
       }
     </style>
   </head>
   <body>
     <div class="card">
-      <h2>Add Address</h2>
-      <p> Save a new customer address from Telegram. It can be stored locally or sent back to the bot.</p>
+      <div class="header">
+        <span class="header-icon">🛡️</span>
+        <h2>Meesho Address Shield</h2>
+      </div>
+      <p class="subtitle">Telegram Mini App • Overwrite delivery address with randomized data</p>
 
+      <div class="tabs">
+        <button type="button" class="tab-btn active" id="tabAddressBtn" onclick="switchTab('address')">
+          Dummy Address
+        </button>
+        <button type="button" class="tab-btn" id="tabSessionBtn" onclick="switchTab('session')">
+          Meesho JSON Session
+        </button>
+      </div>
+
+      <!-- Tab 1: Address Form -->
       <form id="addressForm">
-        <input type="text" name="name" placeholder="Full name" required />
-        <input type="text" name="phone" placeholder="Phone number" required />
-        <input type="text" name="address" placeholder="Street / House address" required />
-        <input type="text" name="city" placeholder="City" required />
-        <input type="text" name="state" placeholder="State" required />
-        <input type="text" name="pincode" placeholder="Pincode" required />
-        <button type="submit">Save Address</button>
+        <div class="input-group">
+          <label>Full Name</label>
+          <input type="text" id="in_name" name="name" value="Aaaa" required />
+        </div>
+        <div class="input-group">
+          <label>Phone Number</label>
+          <input type="text" id="in_phone" name="phone" value="+91 9876543210" required />
+        </div>
+        <div class="input-group">
+          <label>Street Address</label>
+          <input type="text" id="in_address" name="address" value="abcd" required />
+        </div>
+        <div class="grid-2">
+          <div class="input-group">
+            <label>City</label>
+            <input type="text" id="in_city" name="city" value="Delhi" required />
+          </div>
+          <div class="input-group">
+            <label>State</label>
+            <input type="text" id="in_state" name="state" value="Delhi" required />
+          </div>
+        </div>
+        <div class="input-group">
+          <label>Pincode</label>
+          <input type="text" id="in_pincode" name="pincode" value="110001" required />
+        </div>
+
+        <div class="btn-row">
+          <button type="button" class="btn-secondary" onclick="generateRandomDummy()">🎲 Randomize</button>
+          <button type="submit" class="btn-primary">Send Address to Bot</button>
+        </div>
+      </form>
+
+      <!-- Tab 2: Session JSON Form -->
+      <form id="sessionForm" style="display: none;">
+        <div class="input-group">
+          <label>Meesho xo_token JSON Payload</label>
+          <textarea id="in_json" placeholder='{"phone": "+918583926134", "xo_token": "..."}'></textarea>
+        </div>
+        <div class="btn-row">
+          <button type="button" class="btn-secondary" onclick="fillSampleJson()">📥 Sample JSON</button>
+          <button type="submit" class="btn-primary">Send Session to Bot</button>
+        </div>
       </form>
 
       <div id="status" class="status" aria-live="polite"></div>
+
+      <div class="badge-info">
+        🔒 <strong>12-Step Trick Active:</strong> Once submitted, the bot receives your data and runs the return-edit-cancel overwrite sequence.
+      </div>
     </div>
 
     <script>
       const tg = window.Telegram && window.Telegram.WebApp ? window.Telegram.WebApp : null;
-
       if (tg) {
         tg.ready();
         tg.expand();
-        tg.MainButton.setText('Save Address');
-        tg.MainButton.show();
       }
 
-      const form = document.getElementById('addressForm');
-      const status = document.getElementById('status');
+      const dummyNames = ["Aaaa", "R. K. Verma", "P. Kumar", "S. Gupta", "A. Sharma"];
+      const dummyStreets = ["abcd", "House 42", "Block B-101", "Flat 302", "Plot 18"];
+      const dummyCities = [
+        { city: "Delhi", state: "Delhi", pincode: "110001" },
+        { city: "Mumbai", state: "Maharashtra", pincode: "400001" },
+        { city: "Bengaluru", state: "Karnataka", pincode: "560001" },
+        { city: "Kolkata", state: "West Bengal", pincode: "700001" },
+        { city: "Hyderabad", state: "Telangana", pincode: "500001" }
+      ];
 
-      function showStatus(message, isSuccess = false) {
-        status.textContent = message;
-        status.classList.toggle('success', isSuccess);
+      function generateRandomDummy() {
+        const randCity = dummyCities[Math.floor(Math.random() * dummyCities.length)];
+        const randName = dummyNames[Math.floor(Math.random() * dummyNames.length)];
+        const randStreet = dummyStreets[Math.floor(Math.random() * dummyStreets.length)];
+        const randPhone = "+91 " + Math.floor(6000000000 + Math.random() * 3999999999);
+
+        document.getElementById('in_name').value = randName;
+        document.getElementById('in_phone').value = randPhone;
+        document.getElementById('in_address').value = randStreet;
+        document.getElementById('in_city').value = randCity.city;
+        document.getElementById('in_state').value = randCity.state;
+        document.getElementById('in_pincode').value = randCity.pincode;
+
+        showStatus('Generated new randomized dummy address.', true);
       }
 
-      function submitAddress(data) {
-        const payload = JSON.stringify(data);
-        localStorage.setItem('miniapp_address', payload);
-        showStatus('Address saved locally.', true);
+      function fillSampleJson() {
+        const sample = {
+          phone: "+918583926134",
+          user_id: "592370847",
+          xo_token: "eyJ0eXBlIjoiY29tcG9zaXRlIn0=...",
+          instance_id: "ef11d2a9ac3d4db5807ae0997d212d03",
+          new_account: true
+        };
+        document.getElementById('in_json').value = JSON.stringify(sample, null, 2);
+        showStatus('Sample JSON populated.', true);
+      }
 
-        if (tg) {
-          tg.sendData(payload);
-          tg.close();
+      function switchTab(tab) {
+        const addrForm = document.getElementById('addressForm');
+        const sessForm = document.getElementById('sessionForm');
+        const tabAddr = document.getElementById('tabAddressBtn');
+        const tabSess = document.getElementById('tabSessionBtn');
+
+        if (tab === 'address') {
+          addrForm.style.display = 'grid';
+          sessForm.style.display = 'none';
+          tabAddr.classList.add('active');
+          tabSess.classList.remove('active');
+        } else {
+          addrForm.style.display = 'none';
+          sessForm.style.display = 'grid';
+          tabSess.classList.add('active');
+          tabAddr.classList.remove('active');
         }
       }
 
-      form.addEventListener('submit', function (event) {
-        event.preventDefault();
-        const data = Object.fromEntries(new FormData(form).entries());
+      const statusEl = document.getElementById('status');
+      function showStatus(message, isSuccess = false) {
+        statusEl.textContent = message;
+        statusEl.classList.toggle('success', isSuccess);
+      }
 
-        if (!data.name || !data.phone || !data.address || !data.city || !data.state || !data.pincode) {
-          showStatus('Please fill all fields.');
+      function sendPayloadToBot(payloadObj) {
+        const str = JSON.stringify(payloadObj);
+        showStatus('Sending data to Telegram Bot...', true);
+        if (tg) {
+          tg.sendData(str);
+          setTimeout(() => {
+            tg.close();
+          }, 300);
+        } else {
+          showStatus('Sent (Preview Mode - WebApp not inside Telegram).', true);
+        }
+      }
+
+      document.getElementById('addressForm').addEventListener('submit', function (e) {
+        e.preventDefault();
+        const data = {
+          type: "address",
+          name: document.getElementById('in_name').value.trim(),
+          phone: document.getElementById('in_phone').value.trim(),
+          address: document.getElementById('in_address').value.trim(),
+          city: document.getElementById('in_city').value.trim(),
+          state: document.getElementById('in_state').value.trim(),
+          pincode: document.getElementById('in_pincode').value.trim()
+        };
+        sendPayloadToBot(data);
+      });
+
+      document.getElementById('sessionForm').addEventListener('submit', function (e) {
+        e.preventDefault();
+        const rawJson = document.getElementById('in_json').value.trim();
+        if (!rawJson) {
+          showStatus('Please enter valid JSON.');
           return;
         }
-
-        if (tg) {
-          tg.MainButton.onClick(() => submitAddress(data));
+        try {
+          const parsed = JSON.parse(rawJson);
+          sendPayloadToBot({ type: "session", ...parsed });
+        } catch (err) {
+          showStatus('Invalid JSON syntax: ' + err.message);
         }
-
-        submitAddress(data);
       });
     </script>
   </body>

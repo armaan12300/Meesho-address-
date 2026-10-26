@@ -260,6 +260,7 @@ export default function App() {
   const [simStep, setSimStep] = useState<number>(0);
 
   // UI helpers
+  const [userVercelUrl, setUserVercelUrl] = useState<string>('');
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const terminalBottomRef = useRef<HTMLDivElement>(null);
@@ -2029,6 +2030,117 @@ export default function App() {
               </div>
             </div>
 
+            {/* Interactive Vercel URL -> Mini App Link Tool */}
+            {(() => {
+              const trimmed = userVercelUrl.trim();
+              const cleaned = trimmed.replace(/\/miniapp\.html$/, '').replace(/\/$/, '');
+              const baseDomain = cleaned ? (cleaned.startsWith('http') ? cleaned : `https://${cleaned}`) : 'https://your-project.vercel.app';
+              const fullAppUrl = baseDomain;
+              const miniAppUrl = `${baseDomain}/miniapp.html`;
+
+              return (
+                <div className="bg-slate-900 border border-fuchsia-500/30 rounded-2xl p-6 space-y-5 shadow-2xl bg-gradient-to-br from-slate-900 via-slate-900 to-fuchsia-950/20">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                    <div className="flex items-center gap-2.5">
+                      <div className="h-9 w-9 rounded-xl bg-fuchsia-500/20 text-fuchsia-400 flex items-center justify-center font-bold">
+                        🔗
+                      </div>
+                      <div>
+                        <h3 className="font-bold text-base text-white">
+                          Telegram Mini App Link Generator
+                        </h3>
+                        <p className="text-xs text-slate-400">
+                          Paste your deployed Vercel URL to generate instant Mini App buttons & BotFather commands
+                        </p>
+                      </div>
+                    </div>
+                    <span className="text-[11px] bg-fuchsia-950/80 border border-fuchsia-800 text-fuchsia-300 px-3 py-1 rounded-full font-mono">
+                      Auto-Detect in Chat Enabled
+                    </span>
+                  </div>
+
+                  <div className="space-y-2">
+                    <label className="text-xs font-semibold text-slate-300 flex items-center justify-between">
+                      <span>Paste your Vercel URL:</span>
+                      <span className="text-[11px] text-slate-500 font-normal">e.g. https://meesho-address.vercel.app</span>
+                    </label>
+                    <input
+                      type="text"
+                      value={userVercelUrl}
+                      onChange={(e) => setUserVercelUrl(e.target.value)}
+                      placeholder="https://your-app.vercel.app (or paste /miniapp.html)"
+                      className="w-full bg-slate-950 border border-slate-700 focus:border-fuchsia-500 rounded-xl px-3.5 py-2.5 text-xs font-mono text-slate-200 outline-none transition"
+                    />
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-1">
+                    {/* Full Web Suite URL */}
+                    <div className="bg-slate-950 border border-slate-800 rounded-xl p-3.5 space-y-2">
+                      <div className="flex items-center justify-between">
+                        <span className="text-[11px] uppercase font-bold text-slate-400 tracking-wider">
+                          1. Full Web App Mini App URL:
+                        </span>
+                        <button
+                          onClick={() => copyToClipboard(fullAppUrl)}
+                          className="text-[11px] text-fuchsia-400 hover:text-fuchsia-300 flex items-center gap-1"
+                        >
+                          <Copy className="h-3 w-3" /> Copy
+                        </button>
+                      </div>
+                      <p className="font-mono text-xs text-slate-200 break-all bg-slate-900/80 p-2 rounded-lg border border-slate-800">
+                        {fullAppUrl}
+                      </p>
+                      <p className="text-[11px] text-slate-400">
+                        Opens full responsive suite with bulk accounts, dupe scanner & simulator.
+                      </p>
+                    </div>
+
+                    {/* Quick Mini App URL */}
+                    <div className="bg-slate-950 border border-slate-800 rounded-xl p-3.5 space-y-2">
+                      <div className="flex items-center justify-between">
+                        <span className="text-[11px] uppercase font-bold text-slate-400 tracking-wider">
+                          2. Quick Mini App Form URL:
+                        </span>
+                        <button
+                          onClick={() => copyToClipboard(miniAppUrl)}
+                          className="text-[11px] text-fuchsia-400 hover:text-fuchsia-300 flex items-center gap-1"
+                        >
+                          <Copy className="h-3 w-3" /> Copy
+                        </button>
+                      </div>
+                      <p className="font-mono text-xs text-slate-200 break-all bg-slate-900/80 p-2 rounded-lg border border-slate-800">
+                        {miniAppUrl}
+                      </p>
+                      <p className="text-[11px] text-slate-400">
+                        Standalone mobile form with randomized dummy addresses & instant submit back to bot.
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* BotFather Setup Steps */}
+                  <div className="bg-slate-950/80 border border-slate-800 rounded-xl p-4 text-xs space-y-2">
+                    <p className="font-bold text-slate-200 flex items-center gap-1.5">
+                      <span className="text-[#229ED9]">✈</span> How to add to your Telegram Bot:
+                    </p>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-slate-300">
+                      <div className="bg-slate-900 p-3 rounded-lg border border-slate-800 space-y-1">
+                        <span className="font-bold text-fuchsia-400 block">Method A: Just paste in Bot Chat!</span>
+                        <p className="text-[11px] text-slate-400">
+                          Simply send <code className="text-slate-200 font-mono">{fullAppUrl}</code> directly in the Telegram bot chat. The bot will automatically detect it and configure both Mini App buttons!
+                        </p>
+                      </div>
+                      <div className="bg-slate-900 p-3 rounded-lg border border-slate-800 space-y-1">
+                        <span className="font-bold text-[#229ED9] block">Method B: Permanent Bottom Menu Button</span>
+                        <p className="text-[11px] text-slate-400">
+                          In <strong className="text-white">@BotFather</strong>, send <code className="text-slate-200 font-mono">/setmenubutton</code>, select your bot, paste <code className="text-slate-200 font-mono">{fullAppUrl}</code>, and name it <code className="text-slate-200 font-mono">Meesho Shield</code>.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              );
+            })()}
+
             {/* Quick Run in Terminal or Android Termux */}
             <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 space-y-4 shadow-xl">
               <div className="flex items-center justify-between">
@@ -2041,7 +2153,7 @@ export default function App() {
                 <button
                   onClick={() =>
                     copyToClipboard(
-                      'pip install -r requirements.txt\nexport TELEGRAM_BOT_TOKEN="your_bot_token"\nexport APP_URL="https://your-app.vercel.app"\npython bot.py'
+                      `pip install -r requirements.txt\nexport TELEGRAM_BOT_TOKEN="your_bot_token"\nexport APP_URL="${userVercelUrl.trim() || 'https://your-app.vercel.app'}"\npython bot.py`
                     )
                   }
                   className="text-xs text-fuchsia-400 hover:text-fuchsia-300 flex items-center gap-1 bg-fuchsia-950/60 border border-fuchsia-800 px-2.5 py-1 rounded-lg transition"
@@ -2055,7 +2167,7 @@ export default function App() {
                 <p>pip install -r requirements.txt</p>
                 <p className="text-slate-500 pt-1"># 2. Configure environment variables</p>
                 <p>export TELEGRAM_BOT_TOKEN="<span className="text-fuchsia-400">your_botfather_token</span>"</p>
-                <p>export APP_URL="<span className="text-fuchsia-400">https://your-vercel-or-app-url.app</span>"</p>
+                <p>export APP_URL="<span className="text-fuchsia-400">{userVercelUrl.trim() || 'https://your-app.vercel.app'}</span>"</p>
                 <p className="text-slate-500 pt-1"># 3. Start bot</p>
                 <p className="text-emerald-400 font-bold">python bot.py</p>
               </div>
