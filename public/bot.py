@@ -25,24 +25,27 @@ from telegram import (
     InputFile,
     InlineKeyboardButton,
     InlineKeyboardMarkup,
-    WebAppInfo
+    WebAppInfo,
 )
 from telegram.ext import (
     Application,
     CommandHandler,
     MessageHandler,
     ContextTypes,
-    filters
+    filters,
 )
 
 load_dotenv()
 
 TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "").strip()
-APP_URL = os.getenv("APP_URL", "https://ais-dev-4fxlnvf7ox3uamx4iurjwm-955897745705.asia-southeast1.run.app").strip()
+APP_URL = os.getenv("APP_URL", "https://your-vercel-app-url.vercel.app/miniapp.html").strip()
+if APP_URL and not APP_URL.startswith("http"):
+    APP_URL = f"https://{APP_URL}"
 MAX_FILE_BYTES = 5_000_000
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 log = logging.getLogger("meesho-address-bot")
+
 
 def extract_all_jsons(text: str) -> List[Dict[str, Any]]:
     """Extracts all JSON objects from raw text, NDJSON, or dumped .txt files."""
@@ -50,7 +53,6 @@ def extract_all_jsons(text: str) -> List[Dict[str, Any]]:
     if not text:
         return []
 
-    # 1. Direct JSON parse
     try:
         parsed = json.loads(text)
         if isinstance(parsed, list):
@@ -62,7 +64,6 @@ def extract_all_jsons(text: str) -> List[Dict[str, Any]]:
     except Exception:
         pass
 
-    # 2. Balanced brace scanner for .txt dumps
     brace_matches = []
     depth = 0
     start_idx = -1
@@ -99,6 +100,7 @@ def extract_all_jsons(text: str) -> List[Dict[str, Any]]:
 
     return results
 
+
 def generate_dummy_address() -> Dict[str, str]:
     dummy_names = ["Aaaa", "R. K. Verma", "P. Kumar", "S. Gupta"]
     dummy_streets = ["abcd", "House 42", "Block B-101", "Flat 302"]
@@ -117,8 +119,9 @@ def generate_dummy_address() -> Dict[str, str]:
         "road": random.choice(dummy_roads),
         "pincode": city["pincode"],
         "city": city["city"],
-        "state": city["state"]
+        "state": city["state"],
     }
+
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
@@ -140,49 +143,52 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         [
             InlineKeyboardButton(
                 "🚀 Open Meesho Address Shield (Web App)",
-                web_app=WebAppInfo(url=APP_URL)
+                web_app=WebAppInfo(url=APP_URL),
             )
         ],
         [
             InlineKeyboardButton("📥 Download Sample JSON", callback_data="cmd_sample"),
-            InlineKeyboardButton("📖 12-Step Guide", callback_data="cmd_guide")
-        ]
+            InlineKeyboardButton("📖 12-Step Guide", callback_data="cmd_guide"),
+        ],
     ]
 
     await update.message.reply_text(
         welcome_text,
         parse_mode="Markdown",
-        reply_markup=InlineKeyboardMarkup(keyboard)
+        reply_markup=InlineKeyboardMarkup(keyboard),
     )
+
 
 async def app_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     keyboard = [
         [
             InlineKeyboardButton(
                 "🚀 Launch Meesho Address Shield",
-                web_app=WebAppInfo(url=APP_URL)
+                web_app=WebAppInfo(url=APP_URL),
             )
         ]
     ]
     await update.message.reply_text(
         "Click below to launch the Meesho Address Shield app inside Telegram:",
-        reply_markup=InlineKeyboardMarkup(keyboard)
+        reply_markup=InlineKeyboardMarkup(keyboard),
     )
+
 
 async def sample_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     sample_data = {
         "phone": "+918583926134",
         "user_id": "592370847",
-        "xo_token": "eyJ0eXBlIjoiY29tcG9zaXRlIn0=.eyJqd3QiOiJleUpoYkdjaU9pSklVekkxTmlJc0ltaDBkSEJ6T2k4dmJXVmxjMmh2TG1OdmJTOXBjMjlmWTI5MWJuUnllVjlqYjJSbElqb2lTVTRpTENKb2RIUndjem92TDIxbFpYTm9ieTVqYjIwdmRtVnljMmx2YmlJNklqRWlMQ0owZVhBaU9pSktWMVFpZlEuZXlKbGVIQWlPakUzT1RNd09UYzRNekVzSW1oMGRIQnpPaTh2YldWbGMyaHZMbU52YlM5cGJuTjBZVzVqWlY5cFpDSTZJbVZtTVRGa01tRTVZV016WkRSa1lqVTRNRGRoWlRBNU9UZGtNakV5WkRBeklpd2lhSFIwY0hNNkx5OXRaV1Z6YUc4dVkyOXRMM1Z6WlhKZmFXUWlPaUkxT1RJek56QTRORGNpTENKcFlYUWlPakUzT1RJNU1qVXdNekY5LjZkOVNoV3B1VkE4eUNBWVZlNXBPZXpleHA0TUQwcWNtLXhBX0pDV2lDSnciLCJ4byI6IjJiY2FmMDY0ZGVkNDQ0N2M4N2IyNzVkODg2YWM0ZDFkIn0=",
+        "xo_token": "eyJ0eXBlIjoiY29tcG9zaXRlIn0=.eyJqd3QiOiJleUpoYkdjaU9pSklVekkxTmlJc0ltaDBkSEJ6T2k4dmJXVmxjMmh2TG1OdmJTOXBjMjlmWTI5MWJuUnllVjlqYjJSbElqb2lTVTRpTENKb2RIUndjem92TDIxbFpYTm9ieTVqY",
         "ox_token": "Mxc7ZjqD1OIpo206chOEIxQYbNsMHsuyP65oU9MN19GbuLK59TLvLoEOxe187DOp1rvCl1JcwBgrv0pNsMLtouuT8mCfPWBRDlnBBXICH3XISKWroaPVwJyIMBwwROnhv8TaJA",
         "instance_id": "ef11d2a9ac3d4db5807ae0997d212d03",
-        "new_account": True
+        "new_account": True,
     }
     payload = json.dumps(sample_data, indent=2).encode("utf-8")
     await update.message.reply_document(
         InputFile(BytesIO(payload), filename="meesho_sample_session.json"),
-        caption="Sample Meesho xo_token session JSON file. Send your real file to run automated protection!"
+        caption="Sample Meesho xo_token session JSON file. Send your real file to run automated protection!",
     )
+
 
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     guide = (
@@ -197,6 +203,35 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
     await update.message.reply_text(guide, parse_mode="Markdown")
 
+
+async def handle_web_app_data(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    message = update.effective_message
+    if not message or not getattr(message, "web_app_data", None):
+        return
+
+    try:
+        data = json.loads(message.web_app_data.data)
+    except Exception:
+        data = {"raw": message.web_app_data.data}
+
+    context.user_data.setdefault("mini_app_addresses", [])
+    context.user_data["mini_app_addresses"].append(data)
+
+    name = data.get("name") or "Unknown"
+    phone = data.get("phone") or "Unknown"
+    city = data.get("city") or "-"
+    pincode = data.get("pincode") or "-"
+
+    await message.reply_text(
+        "✅ Address received from Telegram Mini App\n\n"
+        f"Name: {name}\n"
+        f"Phone: {phone}\n"
+        f"City: {city}\n"
+        f"Pincode: {pincode}",
+        parse_mode="Markdown",
+    )
+
+
 async def process_account_list(update: Update, raw_accounts: List[Dict[str, Any]]):
     total = len(raw_accounts)
     if total == 0:
@@ -206,7 +241,7 @@ async def process_account_list(update: Update, raw_accounts: List[Dict[str, Any]
     status_msg = await update.message.reply_text(
         f"⚡ *Detected {total} Meesho Session(s)*\n"
         "Initializing isolated login sessions and executing 12-step address scrambler...",
-        parse_mode="Markdown"
+        parse_mode="Markdown",
     )
 
     results_text = [f"🛡️ *Meesho Address Protection Results ({total} Sessions):*\n"]
@@ -217,7 +252,6 @@ async def process_account_list(update: Update, raw_accounts: List[Dict[str, Any]
         order_id = f"344628373002{8000+i}"
         dummy = generate_dummy_address()
 
-        # Step progression
         results_text.append(
             f"\n*{i}. Account:* `{phone}` (UID: `{user_id}`)\n"
             f"   • Order: `#{order_id}`\n"
@@ -232,10 +266,11 @@ async def process_account_list(update: Update, raw_accounts: List[Dict[str, Any]
     full_output = "\n".join(results_text)
     if len(full_output) > 4000:
         await status_msg.edit_text("✅ All accounts protected! Sending summary...")
-        for chunk in [full_output[j:j+3800] for j in range(0, len(full_output), 3800)]:
+        for chunk in [full_output[j : j + 3800] for j in range(0, len(full_output), 3800)]:
             await update.message.reply_text(chunk, parse_mode="Markdown")
     else:
         await status_msg.edit_text(full_output, parse_mode="Markdown")
+
 
 async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
     doc = update.message.document
@@ -254,6 +289,7 @@ async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except Exception as exc:
         await update.message.reply_text(f"❌ Error processing file: {exc}")
 
+
 async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text
     if text.startswith("/"):
@@ -266,6 +302,7 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "Send a valid Meesho session JSON or upload a .txt file containing multiple JSONs to start protection!"
         )
 
+
 def main():
     if not TOKEN:
         print("Error: TELEGRAM_BOT_TOKEN not found in environment or .env file.")
@@ -277,11 +314,13 @@ def main():
     app.add_handler(CommandHandler("app", app_command))
     app.add_handler(CommandHandler("sample", sample_command))
     app.add_handler(CommandHandler("help", help_command))
+    app.add_handler(MessageHandler(filters.StatusUpdate.WEB_APP_DATA, handle_web_app_data))
     app.add_handler(MessageHandler(filters.Document.ALL, handle_document))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
 
     print(f"Meesho Address Shield Telegram Bot is running... (App URL: {APP_URL})")
     app.run_polling()
+
 
 if __name__ == "__main__":
     main()

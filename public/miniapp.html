@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Address Mini App</title>
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <style>
+      :root {
+        --bg: #0f172a;
+        --panel: #111827;
+        --card: #ffffff;
+        --primary: #2ea6ff;
+        --primary-dark: #1f7fd8;
+        --text: #0f172a;
+        --muted: #4b5563;
+        --success: #16a34a;
+      }
+
+      * { box-sizing: border-box; }
+
+      body {
+        margin: 0;
+        min-height: 100vh;
+        background: linear-gradient(180deg, #eef6ff 0%, #f8fafc 100%);
+        font-family: Arial, Helvetica, sans-serif;
+        color: var(--text);
+        display: flex;
+        justify-content: center;
+        align-items: flex-start;
+        padding: 24px 16px;
+      }
+
+      .card {
+        width: min(100%, 460px);
+        background: var(--card);
+        border-radius: 20px;
+        box-shadow: 0 16px 40px rgba(15, 23, 42, 0.14);
+        padding: 22px;
+      }
+
+      h2 {
+        margin: 0 0 12px;
+        font-size: 24px;
+      }
+
+      p {
+        margin: 0 0 18px;
+        color: var(--muted);
+        font-size: 14px;
+      }
+
+      form {
+        display: grid;
+        gap: 12px;
+      }
+
+      input {
+        width: 100%;
+        border: 1px solid #dbe3ee;
+        border-radius: 12px;
+        background: #f8fafc;
+        padding: 12px 14px;
+        font-size: 14px;
+        outline: none;
+      }
+
+      input:focus {
+        border-color: var(--primary);
+        box-shadow: 0 0 0 3px rgba(46, 166, 255, 0.12);
+      }
+
+      button {
+        border: none;
+        border-radius: 12px;
+        background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%);
+        color: white;
+        font-weight: 700;
+        font-size: 15px;
+        padding: 14px 16px;
+        cursor: pointer;
+      }
+
+      button:hover {
+        filter: brightness(1.04);
+      }
+
+      .status {
+        margin-top: 14px;
+        font-size: 13px;
+        color: var(--muted);
+        min-height: 20px;
+      }
+
+      .status.success {
+        color: var(--success);
+        font-weight: 600;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="card">
+      <h2>Add Address</h2>
+      <p> Save a new customer address from Telegram. It can be stored locally or sent back to the bot.</p>
+
+      <form id="addressForm">
+        <input type="text" name="name" placeholder="Full name" required />
+        <input type="text" name="phone" placeholder="Phone number" required />
+        <input type="text" name="address" placeholder="Street / House address" required />
+        <input type="text" name="city" placeholder="City" required />
+        <input type="text" name="state" placeholder="State" required />
+        <input type="text" name="pincode" placeholder="Pincode" required />
+        <button type="submit">Save Address</button>
+      </form>
+
+      <div id="status" class="status" aria-live="polite"></div>
+    </div>
+
+    <script>
+      const tg = window.Telegram && window.Telegram.WebApp ? window.Telegram.WebApp : null;
+
+      if (tg) {
+        tg.ready();
+        tg.expand();
+        tg.MainButton.setText('Save Address');
+        tg.MainButton.show();
+      }
+
+      const form = document.getElementById('addressForm');
+      const status = document.getElementById('status');
+
+      function showStatus(message, isSuccess = false) {
+        status.textContent = message;
+        status.classList.toggle('success', isSuccess);
+      }
+
+      function submitAddress(data) {
+        const payload = JSON.stringify(data);
+        localStorage.setItem('miniapp_address', payload);
+        showStatus('Address saved locally.', true);
+
+        if (tg) {
+          tg.sendData(payload);
+          tg.close();
+        }
+      }
+
+      form.addEventListener('submit', function (event) {
+        event.preventDefault();
+        const data = Object.fromEntries(new FormData(form).entries());
+
+        if (!data.name || !data.phone || !data.address || !data.city || !data.state || !data.pincode) {
+          showStatus('Please fill all fields.');
+          return;
+        }
+
+        if (tg) {
+          tg.MainButton.onClick(() => submitAddress(data));
+        }
+
+        submitAddress(data);
+      });
+    </script>
+  </body>
+</html>
