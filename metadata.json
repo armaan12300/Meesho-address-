@@ -1,0 +1,6 @@
+{
+  "name": "Meesho Address Protector & Automated Address Scrambler",
+  "description": "Automated Meesho session login with JSON and 12-step address scrambler to protect buyer privacy from address sellers.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
